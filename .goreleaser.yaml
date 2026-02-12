@@ -51,13 +51,11 @@ brews:
     repository:
       owner: felipe-veas
       name: homebrew-tap
-      branch: main
+      token: "{{ .Env.HOMEBREW_TAP_GITHUB_TOKEN }}"
+      branch: "{{ .ProjectName }}-{{ .Version }}"
       pull_request:
         enabled: true
-        base:
-          owner: felipe-veas
-          name: homebrew-tap
-          branch: main
+        base: main
     commit_author:
       name: goreleaserbot
       email: bot@goreleaser.com
