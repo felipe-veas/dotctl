@@ -23,7 +23,7 @@ func Load(path string) (*Manifest, error) {
 func Parse(data []byte) (*Manifest, error) {
 	var m Manifest
 	if err := yaml.Unmarshal(data, &m); err != nil {
-		return nil, fmt.Errorf("parsing manifest: %w", err)
+		return nil, fmt.Errorf("parsing manifest YAML (see line/column in error): %w", err)
 	}
 
 	if err := validate(&m); err != nil {

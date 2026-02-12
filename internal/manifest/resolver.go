@@ -1,6 +1,12 @@
 package manifest
 
-import "github.com/felipe-veas/dotctl/internal/profile"
+import (
+	"path"
+	"path/filepath"
+	"strings"
+
+	"github.com/felipe-veas/dotctl/internal/profile"
+)
 
 // Action represents a resolved file action to execute.
 type Action struct {
@@ -17,6 +23,15 @@ func Resolve(m *Manifest, ctx profile.Context, repoRoot string) (actions []Actio
 	vars := MergeVars(m.Vars, ctx.Vars())
 
 	for _, f := range m.Files {
+		if pattern, ignored := matchedIgnorePattern(f.Source, m.Ignore); ignored {
+			skipped = append(skipped, Action{
+				Source:     f.Source,
+				Target:     f.Target,
+				SkipReason: "ignored by pattern " + pattern,
+			})
+			continue
+		}
+
 		// Evaluate conditions
 		if !f.When.OS.Matches(ctx.OS) {
 			skipped = append(skipped, Action{
@@ -80,4 +95,26 @@ func sliceStr(s StringOrSlice) string {
 		result += v
 	}
 	return result + "]"
+}
+
+func matchedIgnorePattern(source string, patterns []string) (string, bool) {
+	src := filepath.ToSlash(strings.TrimSpace(source))
+	src = strings.TrimPrefix(src, "./")
+	base := path.Base(src)
+
+	for _, rawPattern := range patterns {
+		pattern := filepath.ToSlash(strings.TrimSpace(rawPattern))
+		if pattern == "" {
+			continue
+		}
+
+		if ok, _ := path.Match(pattern, src); ok {
+			return pattern, true
+		}
+		if ok, _ := path.Match(pattern, base); ok {
+			return pattern, true
+		}
+	}
+
+	return "", false
 }
