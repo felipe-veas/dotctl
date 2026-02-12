@@ -1,0 +1,13 @@
+[Unit]
+Description=dotctl tray app
+After=graphical-session.target
+PartOf=graphical-session.target
+
+[Service]
+Type=simple
+ExecStart=%h/.local/bin/dotctl-tray
+Restart=on-failure
+RestartSec=3
+
+[Install]
+WantedBy=default.target
