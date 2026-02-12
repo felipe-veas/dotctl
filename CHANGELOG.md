@@ -1,5 +1,15 @@
 # Changelog
 
+## [1.2.0](https://github.com/felipe-veas/dotctl/compare/v1.1.0...v1.2.0) (2026-02-12)
+
+
+### Features
+
+* **cmd:** implement hooks and bootstrap command ([971e863](https://github.com/felipe-veas/dotctl/commit/971e863e4f82774556083d5ec105bc32c8929286))
+* implement tray apps and hooks ([dc44d97](https://github.com/felipe-veas/dotctl/commit/dc44d979148e99b161f65b82e9fcefd1d57ad7cd))
+* **tray:** implement linux tray app ([e3b6a78](https://github.com/felipe-veas/dotctl/commit/e3b6a78185e7d0f157e40e9737cfa2e96907a238))
+* **tray:** scaffold macos status app ([c268844](https://github.com/felipe-veas/dotctl/commit/c26884478b5a24120b232a248618bdca45186bd1))
+
 ## [1.1.0](https://github.com/felipe-veas/dotctl/compare/v1.0.0...v1.1.0) (2026-02-12)
 
 
