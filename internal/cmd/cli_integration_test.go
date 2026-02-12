@@ -270,6 +270,33 @@ func TestCLISyncRunsHooksIntegration(t *testing.T) {
 	}
 }
 
+func TestCLISyncRollbackOnPostHookFailure(t *testing.T) {
+	requireGit(t)
+	env := setupCLIIntegration(t, false)
+	initForIntegration(t, env)
+
+	manifestBody := "version: 1\nfiles:\n  - source: configs/zsh/.zshrc\n    target: ~/.zshrc\nhooks:\n  post_sync:\n    - command: exit 9\n"
+	if err := os.WriteFile(filepath.Join(env.clonePath, "manifest.yaml"), []byte(manifestBody), 0o644); err != nil {
+		t.Fatalf("write manifest with failing post_sync hook: %v", err)
+	}
+	gitCmd(t, env.clonePath, "add", "manifest.yaml")
+	gitCmd(t, env.clonePath, "-c", "user.name=test", "-c", "user.email=test@example.com", "commit", "-m", "configure failing post hook")
+	gitCmd(t, env.clonePath, "push", "origin", "HEAD")
+
+	_, err := executeCLI(t, "sync", "--config", env.configPath)
+	if err == nil {
+		t.Fatal("expected sync failure due to failing post_sync hook")
+	}
+	if !strings.Contains(err.Error(), "post_sync hook failed") {
+		t.Fatalf("unexpected sync error: %v", err)
+	}
+
+	target := filepath.Join(env.homePath, ".zshrc")
+	if _, statErr := os.Lstat(target); !os.IsNotExist(statErr) {
+		t.Fatalf("expected rollback to remove target %s, got err=%v", target, statErr)
+	}
+}
+
 func TestCLIDoctorIntegration(t *testing.T) {
 	requireGit(t)
 	env := setupCLIIntegration(t, true)
