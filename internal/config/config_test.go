@@ -129,3 +129,98 @@ func TestExists(t *testing.T) {
 		t.Error("Exists should return true for existing file")
 	}
 }
+
+func TestLoadMigratesLegacyRepoToRepos(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.yaml")
+
+	body := []byte(`
+repo:
+  url: github.com/user/dotfiles
+  path: /tmp/dotfiles
+profile: laptop
+`)
+	if err := os.WriteFile(path, body, 0o644); err != nil {
+		t.Fatalf("write legacy config: %v", err)
+	}
+
+	cfg, err := Load(path)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+
+	if len(cfg.Repos) != 1 {
+		t.Fatalf("Repos len = %d, want 1", len(cfg.Repos))
+	}
+	if cfg.ActiveRepo != DefaultRepoName {
+		t.Fatalf("ActiveRepo = %q, want %q", cfg.ActiveRepo, DefaultRepoName)
+	}
+	if cfg.Repos[0].Name != DefaultRepoName {
+		t.Fatalf("Repos[0].Name = %q, want %q", cfg.Repos[0].Name, DefaultRepoName)
+	}
+}
+
+func TestConfigSetActiveRepo(t *testing.T) {
+	cfg := &Config{
+		Repos: []RepoConfig{
+			{Name: "default", URL: "github.com/user/default", Path: "/tmp/default"},
+			{Name: "work", URL: "github.com/user/work", Path: "/tmp/work"},
+		},
+		ActiveRepo: "default",
+		Profile:    "dev",
+	}
+
+	if err := cfg.SetActiveRepo("work"); err != nil {
+		t.Fatalf("SetActiveRepo: %v", err)
+	}
+	if cfg.ActiveRepo != "work" {
+		t.Fatalf("ActiveRepo = %q, want work", cfg.ActiveRepo)
+	}
+	if cfg.Repo.Name != "work" {
+		t.Fatalf("Repo.Name = %q, want work", cfg.Repo.Name)
+	}
+}
+
+func TestConfigUpsertRepoAndRemove(t *testing.T) {
+	cfg := &Config{
+		Repos: []RepoConfig{
+			{Name: "default", URL: "github.com/user/default", Path: "/tmp/default"},
+		},
+		ActiveRepo: "default",
+		Profile:    "dev",
+	}
+
+	updated, err := cfg.UpsertRepo(RepoConfig{
+		Name: "work",
+		URL:  "github.com/user/work",
+		Path: "/tmp/work",
+	})
+	if err != nil {
+		t.Fatalf("UpsertRepo add: %v", err)
+	}
+	if updated {
+		t.Fatal("expected updated=false for new repo")
+	}
+	if len(cfg.Repos) != 2 {
+		t.Fatalf("Repos len = %d, want 2", len(cfg.Repos))
+	}
+
+	updated, err = cfg.UpsertRepo(RepoConfig{
+		Name: "work",
+		URL:  "github.com/user/work-updated",
+		Path: "/tmp/work2",
+	})
+	if err != nil {
+		t.Fatalf("UpsertRepo update: %v", err)
+	}
+	if !updated {
+		t.Fatal("expected updated=true for existing repo")
+	}
+
+	if err := cfg.RemoveRepo("work"); err != nil {
+		t.Fatalf("RemoveRepo: %v", err)
+	}
+	if len(cfg.Repos) != 1 {
+		t.Fatalf("Repos len = %d, want 1", len(cfg.Repos))
+	}
+}

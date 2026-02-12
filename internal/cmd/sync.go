@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/felipe-veas/dotctl/internal/backup"
 	"github.com/felipe-veas/dotctl/internal/config"
 	"github.com/felipe-veas/dotctl/internal/gitops"
 	"github.com/felipe-veas/dotctl/internal/linker"
@@ -91,7 +92,7 @@ func runSync(cmd *cobra.Command, args []string) (err error) {
 	preHookResults, err := runHooks(out, "pre_sync", preHooks, cfg.Repo.Path, flagDryRun)
 	if err != nil {
 		if out.IsJSON() {
-			_ = out.JSON(syncResult(nil, state.Skipped, flagDryRun, pullOutput, nil, preHookResults, nil, nil))
+			_ = out.JSON(syncResult(nil, state.Skipped, flagDryRun, pullOutput, nil, preHookResults, nil, nil, nil))
 		}
 		return err
 	}
@@ -102,12 +103,13 @@ func runSync(cmd *cobra.Command, args []string) (err error) {
 		postHookResults, err := runHooks(out, "post_sync", postHooks, cfg.Repo.Path, flagDryRun)
 		if err != nil {
 			if out.IsJSON() {
-				_ = out.JSON(syncResult(nil, state.Skipped, flagDryRun, pullOutput, nil, preHookResults, postHookResults, nil))
+				_ = out.JSON(syncResult(nil, state.Skipped, flagDryRun, pullOutput, nil, preHookResults, postHookResults, nil, nil))
 			}
 			return err
 		}
 
 		var pushResult *gitops.PushResult
+		var backupRotation *backup.RotationResult
 		if !flagDryRun {
 			res, pushErr := gitops.Push(cfg.Repo.Path, "", cfg.Profile, time.Now())
 			if pushErr != nil {
@@ -120,10 +122,11 @@ func runSync(cmd *cobra.Command, args []string) (err error) {
 			if err := persistLastSync(cfgPath, cfg); err != nil {
 				return err
 			}
+			backupRotation = rotateBackups(out, cfg)
 		}
 
 		if out.IsJSON() {
-			return out.JSON(syncResult(nil, state.Skipped, flagDryRun, pullOutput, pushResult, preHookResults, postHookResults, nil))
+			return out.JSON(syncResult(nil, state.Skipped, flagDryRun, pullOutput, pushResult, preHookResults, postHookResults, nil, backupRotation))
 		}
 		return nil
 	}
@@ -211,7 +214,7 @@ func runSync(cmd *cobra.Command, args []string) (err error) {
 	if summary.Errors > 0 {
 		err = rollbackIfNeeded(fmt.Errorf("%d errors during sync", summary.Errors))
 		if out.IsJSON() {
-			_ = out.JSON(syncResult(results, state.Skipped, flagDryRun, pullOutput, nil, preHookResults, nil, rollbackResults))
+			_ = out.JSON(syncResult(results, state.Skipped, flagDryRun, pullOutput, nil, preHookResults, nil, rollbackResults, nil))
 		}
 		return err
 	}
@@ -220,18 +223,19 @@ func runSync(cmd *cobra.Command, args []string) (err error) {
 	if err != nil {
 		err = rollbackIfNeeded(err)
 		if out.IsJSON() {
-			_ = out.JSON(syncResult(results, state.Skipped, flagDryRun, pullOutput, nil, preHookResults, postHookResults, rollbackResults))
+			_ = out.JSON(syncResult(results, state.Skipped, flagDryRun, pullOutput, nil, preHookResults, postHookResults, rollbackResults, nil))
 		}
 		return err
 	}
 
 	var pushResult *gitops.PushResult
+	var backupRotation *backup.RotationResult
 	if !flagDryRun {
 		res, pushErr := gitops.Push(cfg.Repo.Path, "", cfg.Profile, time.Now())
 		if pushErr != nil {
 			err = rollbackIfNeeded(pushErr)
 			if out.IsJSON() {
-				_ = out.JSON(syncResult(results, state.Skipped, flagDryRun, pullOutput, nil, preHookResults, postHookResults, rollbackResults))
+				_ = out.JSON(syncResult(results, state.Skipped, flagDryRun, pullOutput, nil, preHookResults, postHookResults, rollbackResults, nil))
 			}
 			return err
 		}
@@ -248,14 +252,15 @@ func runSync(cmd *cobra.Command, args []string) (err error) {
 		if err := persistLastSync(cfgPath, cfg); err != nil {
 			err = rollbackIfNeeded(err)
 			if out.IsJSON() {
-				_ = out.JSON(syncResult(results, state.Skipped, flagDryRun, pullOutput, pushResult, preHookResults, postHookResults, rollbackResults))
+				_ = out.JSON(syncResult(results, state.Skipped, flagDryRun, pullOutput, pushResult, preHookResults, postHookResults, rollbackResults, nil))
 			}
 			return err
 		}
+		backupRotation = rotateBackups(out, cfg)
 	}
 
 	if out.IsJSON() {
-		return out.JSON(syncResult(results, state.Skipped, flagDryRun, pullOutput, pushResult, preHookResults, postHookResults, rollbackResults))
+		return out.JSON(syncResult(results, state.Skipped, flagDryRun, pullOutput, pushResult, preHookResults, postHookResults, rollbackResults, backupRotation))
 	}
 
 	logging.Info("sync complete", "profile", cfg.Profile, "dry_run", flagDryRun)
@@ -272,15 +277,16 @@ func persistLastSync(cfgPath string, cfg *config.Config) error {
 }
 
 type syncResultJSON struct {
-	DryRun        bool               `json:"dry_run"`
-	PullOutput    string             `json:"pull_output,omitempty"`
-	Applied       []actionResultJSON `json:"applied"`
-	Skipped       []skippedJSON      `json:"skipped"`
-	PreSyncHooks  []hookResultJSON   `json:"pre_sync_hooks,omitempty"`
-	PostSyncHooks []hookResultJSON   `json:"post_sync_hooks,omitempty"`
-	Rollback      []rollbackJSON     `json:"rollback,omitempty"`
-	Summary       summaryJSON        `json:"summary"`
-	Push          *gitops.PushResult `json:"push,omitempty"`
+	DryRun        bool                `json:"dry_run"`
+	PullOutput    string              `json:"pull_output,omitempty"`
+	Applied       []actionResultJSON  `json:"applied"`
+	Skipped       []skippedJSON       `json:"skipped"`
+	PreSyncHooks  []hookResultJSON    `json:"pre_sync_hooks,omitempty"`
+	PostSyncHooks []hookResultJSON    `json:"post_sync_hooks,omitempty"`
+	Rollback      []rollbackJSON      `json:"rollback,omitempty"`
+	BackupRotate  *backupRotationJSON `json:"backup_rotation,omitempty"`
+	Summary       summaryJSON         `json:"summary"`
+	Push          *gitops.PushResult  `json:"push,omitempty"`
 }
 
 type actionResultJSON struct {
@@ -314,6 +320,11 @@ type rollbackJSON struct {
 	Error  string `json:"error,omitempty"`
 }
 
+type backupRotationJSON struct {
+	Kept    int `json:"kept"`
+	Removed int `json:"removed"`
+}
+
 func syncResult(
 	results []linker.Result,
 	skipped []manifest.Action,
@@ -323,6 +334,7 @@ func syncResult(
 	preHooks []hookResultJSON,
 	postHooks []hookResultJSON,
 	rollback []linker.RollbackResult,
+	backupRotation *backup.RotationResult,
 ) syncResultJSON {
 	var applied []actionResultJSON
 	for _, r := range results {
@@ -364,6 +376,14 @@ func syncResult(
 	}
 
 	summary := linker.Summarize(results)
+	var rotationJSON *backupRotationJSON
+	if backupRotation != nil {
+		rotationJSON = &backupRotationJSON{
+			Kept:    backupRotation.Kept,
+			Removed: backupRotation.Removed,
+		}
+	}
+
 	return syncResultJSON{
 		DryRun:        dryRun,
 		PullOutput:    pullOutput,
@@ -372,6 +392,7 @@ func syncResult(
 		PreSyncHooks:  preHooks,
 		PostSyncHooks: postHooks,
 		Rollback:      rollbackList,
+		BackupRotate:  rotationJSON,
 		Summary: summaryJSON{
 			Created:   summary.Created + summary.Copied,
 			AlreadyOK: summary.AlreadyOK,
@@ -380,4 +401,20 @@ func syncResult(
 		},
 		Push: push,
 	}
+}
+
+func rotateBackups(out *output.Printer, cfg *config.Config) *backup.RotationResult {
+	result, err := backup.Rotate(cfg.Backup.Keep)
+	if err != nil {
+		logging.Warn("backup rotation failed", "error", err, "keep", cfg.Backup.Keep)
+		if !out.IsJSON() {
+			out.Warn("Backup rotation failed: %v", err)
+		}
+		return nil
+	}
+
+	if !out.IsJSON() && result.Removed > 0 {
+		out.Info("Backup rotation: removed %d old snapshot(s), keeping %d.", result.Removed, result.Kept)
+	}
+	return &result
 }

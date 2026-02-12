@@ -387,6 +387,63 @@ func TestCLIDoctorIntegration(t *testing.T) {
 	}
 }
 
+func TestCLIReposAddUseIntegration(t *testing.T) {
+	requireGit(t)
+	env := setupCLIIntegration(t, false)
+	initForIntegration(t, env)
+
+	remote2 := filepath.Join(t.TempDir(), "remote2.git")
+	seed2 := filepath.Join(t.TempDir(), "seed2")
+	clone2 := filepath.Join(t.TempDir(), "clone2")
+
+	gitCmd(t, "", "init", "--bare", remote2)
+	gitCmd(t, "", "clone", remote2, seed2)
+	if err := os.MkdirAll(filepath.Join(seed2, "configs"), 0o755); err != nil {
+		t.Fatalf("mkdir seed2 configs: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(seed2, "manifest.yaml"), []byte("version: 1\nfiles: []\n"), 0o644); err != nil {
+		t.Fatalf("write seed2 manifest: %v", err)
+	}
+	gitCmd(t, seed2, "add", ".")
+	gitCmd(t, seed2, "-c", "user.name=test", "-c", "user.email=test@example.com", "commit", "-m", "seed2")
+	gitCmd(t, seed2, "push", "origin", "HEAD")
+
+	if _, err := executeCLI(t,
+		"repos", "add",
+		"--name", "work",
+		"--url", remote2,
+		"--path", clone2,
+		"--activate=false",
+		"--config", env.configPath,
+	); err != nil {
+		t.Fatalf("repos add failed: %v", err)
+	}
+
+	if _, err := executeCLI(t, "repos", "use", "work", "--config", env.configPath); err != nil {
+		t.Fatalf("repos use failed: %v", err)
+	}
+
+	raw, err := executeCLI(t, "status", "--json", "--config", env.configPath)
+	if err != nil {
+		t.Fatalf("status failed: %v", err)
+	}
+	var status struct {
+		Repo struct {
+			Name string `json:"name"`
+			URL  string `json:"url"`
+		} `json:"repo"`
+	}
+	if err := json.Unmarshal([]byte(raw), &status); err != nil {
+		t.Fatalf("parse status json: %v", err)
+	}
+	if status.Repo.Name != "work" {
+		t.Fatalf("status repo name = %q, want work", status.Repo.Name)
+	}
+	if status.Repo.URL != remote2 {
+		t.Fatalf("status repo url = %q, want %q", status.Repo.URL, remote2)
+	}
+}
+
 func initForIntegration(t *testing.T, env cliTestEnv) {
 	t.Helper()
 	_, err := executeCLI(t,

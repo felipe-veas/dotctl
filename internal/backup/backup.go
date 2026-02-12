@@ -6,6 +6,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"sort"
 	"time"
 
 	"github.com/felipe-veas/dotctl/internal/platform"
@@ -53,6 +54,55 @@ func Create(targetPath string) (string, error) {
 	}
 
 	return backupPath, nil
+}
+
+// RotationResult summarizes backup rotation actions.
+type RotationResult struct {
+	Kept    int
+	Removed int
+}
+
+// Rotate removes old backup snapshot directories and keeps only the latest keep snapshots.
+func Rotate(keep int) (RotationResult, error) {
+	if keep <= 0 {
+		keep = 1
+	}
+
+	base := platform.BackupDir()
+	entries, err := os.ReadDir(base)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return RotationResult{}, nil
+		}
+		return RotationResult{}, fmt.Errorf("reading backup dir %q: %w", base, err)
+	}
+
+	snapshots := make([]string, 0, len(entries))
+	for _, entry := range entries {
+		if !entry.IsDir() {
+			continue
+		}
+		snapshots = append(snapshots, entry.Name())
+	}
+
+	sort.Sort(sort.Reverse(sort.StringSlice(snapshots)))
+	if len(snapshots) <= keep {
+		return RotationResult{Kept: len(snapshots), Removed: 0}, nil
+	}
+
+	toRemove := snapshots[keep:]
+	removed := 0
+	for _, snap := range toRemove {
+		if err := os.RemoveAll(filepath.Join(base, snap)); err != nil {
+			return RotationResult{Kept: keep, Removed: removed}, fmt.Errorf("removing old backup %q: %w", snap, err)
+		}
+		removed++
+	}
+
+	return RotationResult{
+		Kept:    keep,
+		Removed: removed,
+	}, nil
 }
 
 func copyFile(src, dst string, perm fs.FileMode) (err error) {

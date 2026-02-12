@@ -1,4 +1,4 @@
-.PHONY: build build-universal build-linux-amd64 build-linux-arm64 build-tray-linux build-app-macos test lint clean install
+.PHONY: build build-universal build-linux-amd64 build-linux-arm64 build-tray-linux build-app-macos build-snap build-aur-srcinfo test lint clean install
 
 BINARY := dotctl
 VERSION := $(shell git describe --tags --always --dirty 2>/dev/null || echo "dev")
@@ -26,6 +26,12 @@ build-tray-linux:
 
 build-app-macos:
 	./scripts/build-app-macos.sh
+
+build-snap:
+	./scripts/build-snap.sh
+
+build-aur-srcinfo:
+	./scripts/generate-aur-srcinfo.sh
 
 test:
 	go test ./... -race -count=1

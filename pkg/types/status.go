@@ -14,6 +14,7 @@ type StatusResponse struct {
 }
 
 type RepoStatus struct {
+	Name       string `json:"name,omitempty"`
 	URL        string `json:"url"`
 	Status     string `json:"status"`
 	Branch     string `json:"branch,omitempty"`

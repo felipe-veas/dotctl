@@ -10,13 +10,13 @@ import (
 	"github.com/felipe-veas/dotctl/internal/gitops"
 	"github.com/felipe-veas/dotctl/internal/logging"
 	"github.com/felipe-veas/dotctl/internal/output"
-	"github.com/felipe-veas/dotctl/internal/platform"
 	"github.com/spf13/cobra"
 )
 
 func newInitCmd() *cobra.Command {
 	var repoURL string
 	var repoPath string
+	var repoName string
 
 	cmd := &cobra.Command{
 		Use:   "init",
@@ -33,22 +33,46 @@ func newInitCmd() *cobra.Command {
 			if repoURL == "" {
 				return fmt.Errorf("--repo is required")
 			}
-			profile := flagProfile
-			if profile == "" {
-				return fmt.Errorf("--profile is required")
+			repoName = config.NormalizeRepoName(repoName)
+			if repoName == "" {
+				repoName = config.DefaultRepoName
 			}
 
-			if config.Exists(cfgPath) && !flagForce {
+			cfg := &config.Config{}
+			if config.Exists(cfgPath) {
 				existing, err := config.Load(cfgPath)
-				if err == nil {
-					out.Warn("Config already exists (profile: %s, repo: %s)", existing.Profile, existing.Repo.URL)
-					out.Warn("Use --force to overwrite")
-					return fmt.Errorf("config already exists at %s", cfgPath)
+				if err != nil {
+					return err
 				}
+				cfg = existing
+
+				if cfg.Profile == "" && flagProfile == "" {
+					return fmt.Errorf("--profile is required for first-time initialization")
+				}
+				if flagProfile != "" {
+					cfg.Profile = flagProfile
+				}
+			} else {
+				profile := flagProfile
+				if profile == "" {
+					return fmt.Errorf("--profile is required")
+				}
+				cfg.Profile = profile
 			}
 
 			if repoPath == "" {
-				repoPath = platform.RepoDir()
+				repoPath = config.DefaultRepoPath(repoName)
+			}
+
+			existsByName := false
+			for _, repo := range cfg.Repos {
+				if repo.Name == repoName {
+					existsByName = true
+					break
+				}
+			}
+			if existsByName && !flagForce {
+				return fmt.Errorf("repo %q already configured; use --force to update it", repoName)
 			}
 
 			authMethod := "ssh"
@@ -81,12 +105,16 @@ func newInitCmd() *cobra.Command {
 				}
 			}
 
-			cfg := &config.Config{
-				Repo: config.RepoConfig{
-					URL:  repoURL,
-					Path: repoPath,
-				},
-				Profile: profile,
+			_, err := cfg.UpsertRepo(config.RepoConfig{
+				Name: repoName,
+				URL:  repoURL,
+				Path: repoPath,
+			})
+			if err != nil {
+				return err
+			}
+			if err := cfg.SetActiveRepo(repoName); err != nil {
+				return err
 			}
 
 			if err := config.Save(cfgPath, cfg); err != nil {
@@ -97,7 +125,8 @@ func newInitCmd() *cobra.Command {
 				return out.JSON(map[string]string{
 					"config_path": cfgPath,
 					"repo":        repoURL,
-					"profile":     profile,
+					"repo_name":   repoName,
+					"profile":     cfg.Profile,
 					"repo_path":   repoPath,
 					"auth_method": authMethod,
 					"auth_user":   authUser,
@@ -105,8 +134,9 @@ func newInitCmd() *cobra.Command {
 				})
 			}
 
-			out.Success("Profile: %s", profile)
-			out.Success("Repo: %s", repoURL)
+			out.Success("Profile: %s", cfg.Profile)
+			out.Success("Repo: %s (%s)", repoName, repoURL)
+			out.Info("Configured repos: %d", len(cfg.Repos))
 			out.Success("Config saved to %s", cfgPath)
 			out.Info("")
 			out.Info("Next: run 'dotctl sync' to apply your dotfiles.")
@@ -117,6 +147,7 @@ func newInitCmd() *cobra.Command {
 
 	cmd.Flags().StringVar(&repoURL, "repo", "", "GitHub repo URL (HTTPS or SSH)")
 	cmd.Flags().StringVar(&repoPath, "path", "", "local path to clone repo (default: ~/.config/dotctl/repo)")
+	cmd.Flags().StringVar(&repoName, "name", config.DefaultRepoName, "repo name for multi-repo configs")
 
 	return cmd
 }
@@ -140,11 +171,24 @@ func resolveConfig() (*config.Config, string, error) {
 	if flagProfile != "" {
 		cfg.Profile = flagProfile
 	}
+	if flagRepoName != "" {
+		if err := cfg.SetActiveRepo(flagRepoName); err != nil {
+			return nil, cfgPath, err
+		}
+	}
 
-	verbosef("config: path=%s repo=%s profile=%s", cfgPath, cfg.Repo.Path, cfg.Profile)
+	activeRepo, err := cfg.Active()
+	if err != nil {
+		return nil, cfgPath, err
+	}
+	cfg.Repo = activeRepo
+
+	verbosef("config: path=%s repo_name=%s repo=%s profile=%s", cfgPath, cfg.Repo.Name, cfg.Repo.Path, cfg.Profile)
 	logging.Debug(
 		"resolved config",
 		"path", cfgPath,
+		"repo_name", cfg.Repo.Name,
+		"repo_url", cfg.Repo.URL,
 		"repo_path", cfg.Repo.Path,
 		"profile", cfg.Profile,
 		"os", runtime.GOOS,
