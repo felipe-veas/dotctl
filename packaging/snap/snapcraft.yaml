@@ -1,0 +1,25 @@
+name: dotctl
+base: core22
+version: git
+summary: Sync dotfiles across machines
+description: |
+  dotctl syncs dotfiles/configs between devices using a Git repository as source of truth.
+  It supports profile-based manifests, symlink/copy modes, backups, and health checks.
+grade: stable
+confinement: classic
+
+apps:
+  dotctl:
+    command: bin/dotctl
+
+parts:
+  dotctl:
+    plugin: go
+    source: ../..
+    source-type: local
+    build-snaps:
+      - go
+    override-build: |
+      set -e
+      export CGO_ENABLED=0
+      go build -trimpath -ldflags "-s -w" -o "$CRAFT_PART_INSTALL/bin/dotctl" ./cmd/dotctl
