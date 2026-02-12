@@ -9,6 +9,7 @@ type StatusResponse struct {
 	Repo     RepoStatus    `json:"repo"`
 	Symlinks SymlinkStatus `json:"symlinks"`
 	Auth     AuthStatus    `json:"auth"`
+	Warnings []string      `json:"warnings,omitempty"`
 	Errors   []string      `json:"errors"`
 }
 

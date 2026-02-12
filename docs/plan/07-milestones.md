@@ -84,16 +84,16 @@ $ dotctl sync && dotctl sync  # segunda vez idempotente
 ## M2: Git Integration + Auth (2 días)
 
 ### Entregables
-- [ ] `internal/auth/` — verificar `gh` CLI, auth status (mensajes de error por OS)
-- [ ] `internal/gitops/` — clone, pull, push, status, dirty check
-- [ ] `dotctl init` ahora clona el repo (no solo guarda config)
-- [ ] `dotctl pull` — `git pull --rebase`
-- [ ] `dotctl push` — `git add -A && git commit && git push`
-- [ ] `dotctl push --message "custom message"`
-- [ ] `dotctl sync` ahora hace pull → apply → push (flujo completo)
-- [ ] `dotctl open` — `platform.OpenURL(url)` (open/xdg-open)
-- [ ] `dotctl doctor` — checks de auth + git + symlinks + manifest + OS info
-- [ ] Soporte SSH URL (detección automática, no requiere `gh` si es SSH)
+- [x] `internal/auth/` — verificar `gh` CLI, auth status (mensajes de error por OS)
+- [x] `internal/gitops/` — clone, pull, push, status, dirty check
+- [x] `dotctl init` ahora clona el repo (no solo guarda config)
+- [x] `dotctl pull` — `git pull --rebase`
+- [x] `dotctl push` — `git add -A && git commit && git push`
+- [x] `dotctl push --message "custom message"`
+- [x] `dotctl sync` ahora hace pull → apply → push (flujo completo)
+- [x] `dotctl open` — `platform.OpenURL(url)` (open/xdg-open)
+- [x] `dotctl doctor` — checks de auth + git + symlinks + manifest + OS info
+- [x] Soporte SSH URL (detección automática, no requiere `gh` si es SSH)
 - [ ] Tests: git operations en CI matrix (macOS + Linux)
 
 ### Criterio de éxito

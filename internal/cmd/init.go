@@ -4,7 +4,9 @@ import (
 	"errors"
 	"fmt"
 
+	"github.com/felipe-veas/dotctl/internal/auth"
 	"github.com/felipe-veas/dotctl/internal/config"
+	"github.com/felipe-veas/dotctl/internal/gitops"
 	"github.com/felipe-veas/dotctl/internal/output"
 	"github.com/felipe-veas/dotctl/internal/platform"
 	"github.com/spf13/cobra"
@@ -17,7 +19,7 @@ func newInitCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "init",
 		Short: "Initialize dotctl: configure repo and profile",
-		Long:  "Sets up dotctl on this machine by saving the repo URL and profile to the local config.",
+		Long:  "Sets up dotctl on this machine by validating auth, cloning the repo, and saving config.",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			out := output.New(flagJSON)
 
@@ -26,7 +28,6 @@ func newInitCmd() *cobra.Command {
 				cfgPath = config.DefaultPath()
 			}
 
-			// Validate required flags
 			if repoURL == "" {
 				return fmt.Errorf("--repo is required")
 			}
@@ -35,7 +36,6 @@ func newInitCmd() *cobra.Command {
 				return fmt.Errorf("--profile is required")
 			}
 
-			// Warn if config already exists
 			if config.Exists(cfgPath) && !flagForce {
 				existing, err := config.Load(cfgPath)
 				if err == nil {
@@ -45,9 +45,38 @@ func newInitCmd() *cobra.Command {
 				}
 			}
 
-			// Build config
 			if repoPath == "" {
 				repoPath = platform.RepoDir()
+			}
+
+			authMethod := "ssh"
+			authUser := ""
+			if !gitops.IsSSHURL(repoURL) {
+				authMethod = "gh"
+				user, err := auth.EnsureGHAuthenticated()
+				if err != nil {
+					return err
+				}
+				authUser = user
+				if !out.IsJSON() {
+					if authUser != "" {
+						out.Success("gh authenticated as %s", authUser)
+					} else {
+						out.Success("gh authenticated")
+					}
+				}
+			}
+
+			repoAlreadyCloned := gitops.IsRepo(repoPath)
+			if err := gitops.Clone(repoURL, repoPath); err != nil {
+				return err
+			}
+			if !out.IsJSON() {
+				if repoAlreadyCloned {
+					out.Info("Repo already cloned at %s", repoPath)
+				} else {
+					out.Success("Cloned to %s", repoPath)
+				}
 			}
 
 			cfg := &config.Config{
@@ -68,13 +97,14 @@ func newInitCmd() *cobra.Command {
 					"repo":        repoURL,
 					"profile":     profile,
 					"repo_path":   repoPath,
+					"auth_method": authMethod,
+					"auth_user":   authUser,
 					"status":      "initialized",
 				})
 			}
 
-			out.Success("Profile set to: %s", profile)
+			out.Success("Profile: %s", profile)
 			out.Success("Repo: %s", repoURL)
-			out.Success("Repo path: %s", repoPath)
 			out.Success("Config saved to %s", cfgPath)
 			out.Info("")
 			out.Info("Next: run 'dotctl sync' to apply your dotfiles.")
