@@ -6,6 +6,7 @@ import (
 	"os/exec"
 	"strings"
 
+	"github.com/felipe-veas/dotctl/internal/logging"
 	"github.com/felipe-veas/dotctl/internal/manifest"
 	"github.com/felipe-veas/dotctl/internal/output"
 )
@@ -31,6 +32,7 @@ func runHooks(out *output.Printer, phase string, hooks []manifest.Hook, repoPath
 			Command:     hook.Command,
 			Description: hook.Description,
 		}
+		logging.Debug("hook start", "phase", phase, "command", hook.Command, "dry_run", dryRun)
 
 		if dryRun {
 			result.Status = "would_run"
@@ -59,11 +61,13 @@ func runHooks(out *output.Printer, phase string, hooks []manifest.Hook, repoPath
 			result.Status = "error"
 			result.Error = err.Error()
 			results = append(results, result)
+			logging.Error("hook failed", "phase", phase, "command", hook.Command, "error", err, "output", trimmed)
 			return results, fmt.Errorf("%s hook failed (%s): %w", phase, hook.Command, err)
 		}
 
 		result.Status = "ok"
 		results = append(results, result)
+		logging.Info("hook complete", "phase", phase, "command", hook.Command)
 	}
 
 	return results, nil

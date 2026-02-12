@@ -1,6 +1,12 @@
 package cmd
 
 import (
+	"fmt"
+	"os"
+	"runtime"
+
+	"github.com/felipe-veas/dotctl/internal/gitops"
+	"github.com/felipe-veas/dotctl/internal/logging"
 	"github.com/spf13/cobra"
 )
 
@@ -21,6 +27,31 @@ func NewRootCmd() *cobra.Command {
 		Long:          "dotctl syncs dotfiles/configs between devices using a private GitHub repo as source of truth.",
 		SilenceUsage:  true,
 		SilenceErrors: true,
+		PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
+			if err := logging.Init(flagVerbose); err != nil {
+				return fmt.Errorf("initializing logger: %w", err)
+			}
+
+			gitops.SetTrace(flagVerbose, os.Stderr)
+			logging.Info(
+				"command start",
+				"command", cmd.CommandPath(),
+				"args", args,
+				"os", runtime.GOOS,
+				"arch", runtime.GOARCH,
+				"verbose", flagVerbose,
+				"json", flagJSON,
+				"dry_run", flagDryRun,
+				"force", flagForce,
+			)
+
+			if flagVerbose {
+				_, _ = fmt.Fprintf(os.Stderr, "[verbose] runtime: %s/%s\n", runtime.GOOS, runtime.GOARCH)
+				_, _ = fmt.Fprintf(os.Stderr, "[verbose] log file: %s\n", logging.Path())
+			}
+
+			return nil
+		},
 	}
 
 	root.PersistentFlags().StringVar(&flagProfile, "profile", "", "active profile name")

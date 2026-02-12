@@ -159,6 +159,7 @@ func runDoctor(cmd *cobra.Command, args []string) error {
 		}
 	}
 
+	var state manifestState
 	state, manifestErr := resolveManifestState(cfg)
 	if manifestErr != nil {
 		addCheck("manifest", false, manifestErr.Error())
@@ -170,6 +171,28 @@ func runDoctor(cmd *cobra.Command, args []string) error {
 		addCheck("manifest", true, detail)
 		if !out.IsJSON() {
 			out.Success("%s", detail)
+		}
+	}
+
+	if manifestErr == nil && gitops.IsRepo(cfg.Repo.Path) {
+		missing, err := missingGitignorePatterns(cfg.Repo.Path, state.Manifest.Ignore)
+		if err != nil {
+			addCheck("ignore_patterns", false, fmt.Sprintf("ignore pattern check failed: %v", err))
+			if !out.IsJSON() {
+				out.Error("ignore pattern check failed: %v", err)
+			}
+		} else if len(missing) > 0 {
+			detail := fmt.Sprintf("missing manifest ignore patterns in .gitignore: %s", joinPreview(missing, 5))
+			report.Warnings = append(report.Warnings, detail)
+			addCheck("ignore_patterns", true, detail)
+			if !out.IsJSON() {
+				out.Warn("%s", detail)
+			}
+		} else {
+			addCheck("ignore_patterns", true, "manifest ignore patterns covered by .gitignore")
+			if !out.IsJSON() {
+				out.Success("manifest ignore patterns covered by .gitignore")
+			}
 		}
 	}
 
@@ -234,4 +257,11 @@ func runDoctor(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("doctor checks failed")
 	}
 	return nil
+}
+
+func joinPreview(items []string, max int) string {
+	if len(items) <= max {
+		return fmt.Sprintf("%v", items)
+	}
+	return fmt.Sprintf("%v (+%d more)", items[:max], len(items)-max)
 }

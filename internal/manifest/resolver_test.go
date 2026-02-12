@@ -162,6 +162,58 @@ func TestResolveHooks(t *testing.T) {
 	}
 }
 
+func TestResolveSkipsIgnoredSources(t *testing.T) {
+	m := &Manifest{
+		Ignore: []string{"*.key", ".env"},
+		Files: []FileEntry{
+			{Source: "configs/zsh/.zshrc", Target: "~/.zshrc"},
+			{Source: "configs/keys/private.key", Target: "~/.private.key"},
+			{Source: ".env", Target: "~/.env"},
+		},
+	}
+
+	ctx := profile.Context{OS: "darwin", Profile: "test", Home: "/home/test"}
+	actions, skipped, err := Resolve(m, ctx, "/repo")
+	if err != nil {
+		t.Fatalf("Resolve: %v", err)
+	}
+
+	if len(actions) != 1 {
+		t.Fatalf("actions = %d, want 1", len(actions))
+	}
+	if actions[0].Source != "configs/zsh/.zshrc" {
+		t.Fatalf("unexpected action source: %s", actions[0].Source)
+	}
+	if len(skipped) != 2 {
+		t.Fatalf("skipped = %d, want 2", len(skipped))
+	}
+}
+
+func TestResolveIgnorePatternMatchesFullPath(t *testing.T) {
+	m := &Manifest{
+		Ignore: []string{"configs/private/*"},
+		Files: []FileEntry{
+			{Source: "configs/private/token.txt", Target: "~/.token"},
+			{Source: "configs/public/config.toml", Target: "~/.config.toml"},
+		},
+	}
+
+	ctx := profile.Context{OS: "linux", Profile: "server", Home: "/home/test"}
+	actions, skipped, err := Resolve(m, ctx, "/repo")
+	if err != nil {
+		t.Fatalf("Resolve: %v", err)
+	}
+	if len(actions) != 1 || actions[0].Source != "configs/public/config.toml" {
+		t.Fatalf("unexpected actions: %+v", actions)
+	}
+	if len(skipped) != 1 {
+		t.Fatalf("skipped = %d, want 1", len(skipped))
+	}
+	if skipped[0].SkipReason == "" {
+		t.Fatal("expected skip reason for ignored entry")
+	}
+}
+
 func TestStringOrSliceMatches(t *testing.T) {
 	tests := []struct {
 		s     StringOrSlice

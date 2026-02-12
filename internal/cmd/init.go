@@ -3,10 +3,12 @@ package cmd
 import (
 	"errors"
 	"fmt"
+	"runtime"
 
 	"github.com/felipe-veas/dotctl/internal/auth"
 	"github.com/felipe-veas/dotctl/internal/config"
 	"github.com/felipe-veas/dotctl/internal/gitops"
+	"github.com/felipe-veas/dotctl/internal/logging"
 	"github.com/felipe-veas/dotctl/internal/output"
 	"github.com/felipe-veas/dotctl/internal/platform"
 	"github.com/spf13/cobra"
@@ -138,6 +140,16 @@ func resolveConfig() (*config.Config, string, error) {
 	if flagProfile != "" {
 		cfg.Profile = flagProfile
 	}
+
+	verbosef("config: path=%s repo=%s profile=%s", cfgPath, cfg.Repo.Path, cfg.Profile)
+	logging.Debug(
+		"resolved config",
+		"path", cfgPath,
+		"repo_path", cfg.Repo.Path,
+		"profile", cfg.Profile,
+		"os", runtime.GOOS,
+		"arch", runtime.GOARCH,
+	)
 
 	return cfg, cfgPath, nil
 }

@@ -7,6 +7,8 @@ import (
 	"github.com/felipe-veas/dotctl/internal/config"
 	"github.com/felipe-veas/dotctl/internal/gitops"
 	"github.com/felipe-veas/dotctl/internal/linker"
+	"github.com/felipe-veas/dotctl/internal/lock"
+	"github.com/felipe-veas/dotctl/internal/logging"
 	"github.com/felipe-veas/dotctl/internal/manifest"
 	"github.com/felipe-veas/dotctl/internal/output"
 	"github.com/spf13/cobra"
@@ -22,13 +24,31 @@ func newSyncCmd() *cobra.Command {
 	}
 }
 
-func runSync(cmd *cobra.Command, args []string) error {
+func runSync(cmd *cobra.Command, args []string) (err error) {
 	out := output.New(flagJSON)
 
 	cfg, cfgPath, err := resolveConfig()
 	if err != nil {
 		return err
 	}
+	logging.Info("sync start", "repo_path", cfg.Repo.Path, "profile", cfg.Profile, "dry_run", flagDryRun)
+
+	syncLock, err := lock.Acquire(lock.DefaultSyncLockPath())
+	if err != nil {
+		return err
+	}
+	verbosef("sync lock acquired: %s", syncLock.Path())
+	logging.Debug("sync lock acquired", "path", syncLock.Path())
+	defer func() {
+		if releaseErr := syncLock.Release(); releaseErr != nil {
+			logging.Error("failed to release sync lock", "path", syncLock.Path(), "error", releaseErr)
+			if err == nil {
+				err = fmt.Errorf("releasing sync lock: %w", releaseErr)
+			}
+			return
+		}
+		logging.Debug("sync lock released", "path", syncLock.Path())
+	}()
 
 	pullOutput := ""
 	if !flagDryRun {
@@ -36,6 +56,7 @@ func runSync(cmd *cobra.Command, args []string) error {
 		if err != nil {
 			return err
 		}
+		logging.Info("sync pull complete", "output", pullOutput)
 		if !out.IsJSON() {
 			if pullOutput == "" {
 				out.Success("Pull complete")
@@ -60,7 +81,7 @@ func runSync(cmd *cobra.Command, args []string) error {
 	preHookResults, err := runHooks(out, "pre_sync", preHooks, cfg.Repo.Path, flagDryRun)
 	if err != nil {
 		if out.IsJSON() {
-			_ = out.JSON(syncResult(nil, state.Skipped, flagDryRun, pullOutput, nil, preHookResults, nil))
+			_ = out.JSON(syncResult(nil, state.Skipped, flagDryRun, pullOutput, nil, preHookResults, nil, nil))
 		}
 		return err
 	}
@@ -71,7 +92,7 @@ func runSync(cmd *cobra.Command, args []string) error {
 		postHookResults, err := runHooks(out, "post_sync", postHooks, cfg.Repo.Path, flagDryRun)
 		if err != nil {
 			if out.IsJSON() {
-				_ = out.JSON(syncResult(nil, state.Skipped, flagDryRun, pullOutput, nil, preHookResults, postHookResults))
+				_ = out.JSON(syncResult(nil, state.Skipped, flagDryRun, pullOutput, nil, preHookResults, postHookResults, nil))
 			}
 			return err
 		}
@@ -92,7 +113,7 @@ func runSync(cmd *cobra.Command, args []string) error {
 		}
 
 		if out.IsJSON() {
-			return out.JSON(syncResult(nil, state.Skipped, flagDryRun, pullOutput, pushResult, preHookResults, postHookResults))
+			return out.JSON(syncResult(nil, state.Skipped, flagDryRun, pullOutput, pushResult, preHookResults, postHookResults, nil))
 		}
 		return nil
 	}
@@ -104,6 +125,32 @@ func runSync(cmd *cobra.Command, args []string) error {
 	}
 
 	results := linker.Apply(state.Actions, cfg.Repo.Path, flagDryRun)
+	rollbackResults := make([]linker.RollbackResult, 0)
+	rollbackIfNeeded := func(cause error) error {
+		if flagDryRun {
+			return cause
+		}
+
+		rollbackResults = linker.Rollback(results)
+		if len(rollbackResults) == 0 {
+			return cause
+		}
+
+		summary := linker.SummarizeRollback(rollbackResults)
+		logging.Warn("sync rollback attempted", "restored", summary.Restored, "removed", summary.Removed, "errors", summary.Errors)
+		if !out.IsJSON() {
+			if summary.Errors == 0 {
+				out.Warn("Sync failed, rollback complete (%d restored, %d removed).", summary.Restored, summary.Removed)
+			} else {
+				out.Warn("Sync failed, rollback finished with %d error(s).", summary.Errors)
+			}
+		}
+
+		if summary.Errors > 0 {
+			return fmt.Errorf("%w (rollback had %d errors)", cause, summary.Errors)
+		}
+		return cause
+	}
 
 	for _, r := range results {
 		switch r.Status {
@@ -136,16 +183,18 @@ func runSync(cmd *cobra.Command, args []string) error {
 	}
 
 	if summary.Errors > 0 {
+		err = rollbackIfNeeded(fmt.Errorf("%d errors during sync", summary.Errors))
 		if out.IsJSON() {
-			return out.JSON(syncResult(results, state.Skipped, flagDryRun, pullOutput, nil, preHookResults, nil))
+			_ = out.JSON(syncResult(results, state.Skipped, flagDryRun, pullOutput, nil, preHookResults, nil, rollbackResults))
 		}
-		return fmt.Errorf("%d errors during sync", summary.Errors)
+		return err
 	}
 
 	postHookResults, err := runHooks(out, "post_sync", postHooks, cfg.Repo.Path, flagDryRun)
 	if err != nil {
+		err = rollbackIfNeeded(err)
 		if out.IsJSON() {
-			_ = out.JSON(syncResult(results, state.Skipped, flagDryRun, pullOutput, nil, preHookResults, postHookResults))
+			_ = out.JSON(syncResult(results, state.Skipped, flagDryRun, pullOutput, nil, preHookResults, postHookResults, rollbackResults))
 		}
 		return err
 	}
@@ -154,7 +203,11 @@ func runSync(cmd *cobra.Command, args []string) error {
 	if !flagDryRun {
 		res, pushErr := gitops.Push(cfg.Repo.Path, "", cfg.Profile, time.Now())
 		if pushErr != nil {
-			return pushErr
+			err = rollbackIfNeeded(pushErr)
+			if out.IsJSON() {
+				_ = out.JSON(syncResult(results, state.Skipped, flagDryRun, pullOutput, nil, preHookResults, postHookResults, rollbackResults))
+			}
+			return err
 		}
 		pushResult = &res
 
@@ -167,14 +220,19 @@ func runSync(cmd *cobra.Command, args []string) error {
 		}
 
 		if err := persistLastSync(cfgPath, cfg); err != nil {
+			err = rollbackIfNeeded(err)
+			if out.IsJSON() {
+				_ = out.JSON(syncResult(results, state.Skipped, flagDryRun, pullOutput, pushResult, preHookResults, postHookResults, rollbackResults))
+			}
 			return err
 		}
 	}
 
 	if out.IsJSON() {
-		return out.JSON(syncResult(results, state.Skipped, flagDryRun, pullOutput, pushResult, preHookResults, postHookResults))
+		return out.JSON(syncResult(results, state.Skipped, flagDryRun, pullOutput, pushResult, preHookResults, postHookResults, rollbackResults))
 	}
 
+	logging.Info("sync complete", "profile", cfg.Profile, "dry_run", flagDryRun)
 	return nil
 }
 
@@ -194,6 +252,7 @@ type syncResultJSON struct {
 	Skipped       []skippedJSON      `json:"skipped"`
 	PreSyncHooks  []hookResultJSON   `json:"pre_sync_hooks,omitempty"`
 	PostSyncHooks []hookResultJSON   `json:"post_sync_hooks,omitempty"`
+	Rollback      []rollbackJSON     `json:"rollback,omitempty"`
 	Summary       summaryJSON        `json:"summary"`
 	Push          *gitops.PushResult `json:"push,omitempty"`
 }
@@ -220,6 +279,13 @@ type summaryJSON struct {
 	Errors    int `json:"errors"`
 }
 
+type rollbackJSON struct {
+	Source string `json:"source"`
+	Target string `json:"target"`
+	Status string `json:"status"`
+	Error  string `json:"error,omitempty"`
+}
+
 func syncResult(
 	results []linker.Result,
 	skipped []manifest.Action,
@@ -228,6 +294,7 @@ func syncResult(
 	push *gitops.PushResult,
 	preHooks []hookResultJSON,
 	postHooks []hookResultJSON,
+	rollback []linker.RollbackResult,
 ) syncResultJSON {
 	var applied []actionResultJSON
 	for _, r := range results {
@@ -253,6 +320,19 @@ func syncResult(
 		})
 	}
 
+	var rollbackList []rollbackJSON
+	for _, r := range rollback {
+		item := rollbackJSON{
+			Source: r.Action.Source,
+			Target: r.Action.Target,
+			Status: r.Status,
+		}
+		if r.Error != nil {
+			item.Error = r.Error.Error()
+		}
+		rollbackList = append(rollbackList, item)
+	}
+
 	summary := linker.Summarize(results)
 	return syncResultJSON{
 		DryRun:        dryRun,
@@ -261,6 +341,7 @@ func syncResult(
 		Skipped:       skippedList,
 		PreSyncHooks:  preHooks,
 		PostSyncHooks: postHooks,
+		Rollback:      rollbackList,
 		Summary: summaryJSON{
 			Created:   summary.Created + summary.Copied,
 			AlreadyOK: summary.AlreadyOK,

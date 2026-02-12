@@ -1,6 +1,10 @@
 package cmd
 
-import "testing"
+import (
+	"os"
+	"path/filepath"
+	"testing"
+)
 
 func TestIsSensitiveTrackedPath(t *testing.T) {
 	tests := []struct {
@@ -28,5 +32,21 @@ func TestSensitiveTrackedFilesWarning(t *testing.T) {
 	msg := sensitiveTrackedFilesWarning([]string{".env", "secret.key"})
 	if msg == "" {
 		t.Fatal("expected non-empty warning")
+	}
+}
+
+func TestMissingGitignorePatterns(t *testing.T) {
+	repo := t.TempDir()
+	content := "# comments\n.env\n*.pem\n"
+	if err := os.WriteFile(filepath.Join(repo, ".gitignore"), []byte(content), 0o644); err != nil {
+		t.Fatalf("write .gitignore: %v", err)
+	}
+
+	missing, err := missingGitignorePatterns(repo, []string{".env", "*.key", "*.pem"})
+	if err != nil {
+		t.Fatalf("missingGitignorePatterns: %v", err)
+	}
+	if len(missing) != 1 || missing[0] != "*.key" {
+		t.Fatalf("missing = %v, want [*.key]", missing)
 	}
 }

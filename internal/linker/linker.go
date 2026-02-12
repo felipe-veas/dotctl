@@ -1,6 +1,7 @@
 package linker
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"io/fs"
@@ -37,10 +38,17 @@ func Apply(actions []manifest.Action, repoRoot string, dryRun bool) []Result {
 func applyOne(action manifest.Action, sourcePath string, dryRun bool) Result {
 	// Verify source exists
 	if _, err := os.Stat(sourcePath); err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return Result{
+				Action: action,
+				Status: "error",
+				Error:  fmt.Errorf("source %q not found in repo", action.Source),
+			}
+		}
 		return Result{
 			Action: action,
 			Status: "error",
-			Error:  fmt.Errorf("source %q not found in repo", action.Source),
+			Error:  wrapPathError("reading source", sourcePath, err),
 		}
 	}
 
@@ -59,6 +67,14 @@ func applyOne(action manifest.Action, sourcePath string, dryRun bool) Result {
 func applySymlink(action manifest.Action, sourcePath, targetDir string, dryRun bool) Result {
 	// Check if target already exists
 	info, err := os.Lstat(action.Target)
+	if err != nil && !errors.Is(err, os.ErrNotExist) {
+		return Result{
+			Action: action,
+			Status: "error",
+			Error:  wrapPathError("checking existing target", action.Target, err),
+		}
+	}
+
 	if err == nil {
 		// Something exists at target
 		if info.Mode()&os.ModeSymlink != 0 {
@@ -74,14 +90,16 @@ func applySymlink(action manifest.Action, sourcePath, targetDir string, dryRun b
 			return Result{Action: action, Status: "would_backup_and_link"}
 		}
 
+		backupPath := ""
 		if action.Backup {
-			backupPath, backupErr := backup.Create(action.Target)
+			var backupErr error
+			backupPath, backupErr = backup.Create(action.Target)
 			if backupErr != nil {
-				return Result{Action: action, Status: "error", Error: fmt.Errorf("backup: %w", backupErr)}
+				return Result{Action: action, Status: "error", Error: wrapPathError("creating backup", action.Target, backupErr)}
 			}
 
 			if err := os.RemoveAll(action.Target); err != nil {
-				return Result{Action: action, Status: "error", Error: fmt.Errorf("removing old target: %w", err)}
+				return Result{Action: action, Status: "error", BackupPath: backupPath, Error: wrapPathError("removing old target", action.Target, err)}
 			}
 
 			return createSymlink(action, sourcePath, targetDir, backupPath)
@@ -89,7 +107,7 @@ func applySymlink(action manifest.Action, sourcePath, targetDir string, dryRun b
 
 		// No backup, just overwrite
 		if err := os.RemoveAll(action.Target); err != nil {
-			return Result{Action: action, Status: "error", Error: fmt.Errorf("removing old target: %w", err)}
+			return Result{Action: action, Status: "error", Error: wrapPathError("removing old target", action.Target, err)}
 		}
 	}
 
@@ -102,11 +120,11 @@ func applySymlink(action manifest.Action, sourcePath, targetDir string, dryRun b
 
 func createSymlink(action manifest.Action, sourcePath, targetDir, backupPath string) Result {
 	if err := os.MkdirAll(targetDir, 0o755); err != nil {
-		return Result{Action: action, Status: "error", Error: fmt.Errorf("creating target dir: %w", err)}
+		return Result{Action: action, Status: "error", BackupPath: backupPath, Error: wrapPathError("creating target directory", targetDir, err)}
 	}
 
 	if err := os.Symlink(sourcePath, action.Target); err != nil {
-		return Result{Action: action, Status: "error", Error: fmt.Errorf("creating symlink: %w", err)}
+		return Result{Action: action, Status: "error", BackupPath: backupPath, Error: wrapPathError("creating symlink", action.Target, err)}
 	}
 
 	status := "created"
@@ -119,26 +137,34 @@ func createSymlink(action manifest.Action, sourcePath, targetDir, backupPath str
 
 func applyCopy(action manifest.Action, sourcePath, targetDir string, dryRun bool) Result {
 	// Check if target already exists
-	if _, err := os.Lstat(action.Target); err == nil {
+	if _, err := os.Lstat(action.Target); err != nil && !errors.Is(err, os.ErrNotExist) {
+		return Result{
+			Action: action,
+			Status: "error",
+			Error:  wrapPathError("checking existing target", action.Target, err),
+		}
+	} else if err == nil {
 		if dryRun {
 			return Result{Action: action, Status: "would_backup_and_copy"}
 		}
 
+		backupPath := ""
 		if action.Backup {
-			backupPath, backupErr := backup.Create(action.Target)
+			var backupErr error
+			backupPath, backupErr = backup.Create(action.Target)
 			if backupErr != nil {
-				return Result{Action: action, Status: "error", Error: fmt.Errorf("backup: %w", backupErr)}
+				return Result{Action: action, Status: "error", Error: wrapPathError("creating backup", action.Target, backupErr)}
 			}
 
 			if err := os.RemoveAll(action.Target); err != nil {
-				return Result{Action: action, Status: "error", Error: fmt.Errorf("removing old target: %w", err)}
+				return Result{Action: action, Status: "error", BackupPath: backupPath, Error: wrapPathError("removing old target", action.Target, err)}
 			}
 
 			return doCopy(action, sourcePath, targetDir, backupPath)
 		}
 
 		if err := os.RemoveAll(action.Target); err != nil {
-			return Result{Action: action, Status: "error", Error: fmt.Errorf("removing old target: %w", err)}
+			return Result{Action: action, Status: "error", Error: wrapPathError("removing old target", action.Target, err)}
 		}
 	}
 
@@ -151,21 +177,21 @@ func applyCopy(action manifest.Action, sourcePath, targetDir string, dryRun bool
 
 func doCopy(action manifest.Action, sourcePath, targetDir, backupPath string) Result {
 	if err := os.MkdirAll(targetDir, 0o755); err != nil {
-		return Result{Action: action, Status: "error", Error: fmt.Errorf("creating target dir: %w", err)}
+		return Result{Action: action, Status: "error", BackupPath: backupPath, Error: wrapPathError("creating target directory", targetDir, err)}
 	}
 
 	srcInfo, err := os.Stat(sourcePath)
 	if err != nil {
-		return Result{Action: action, Status: "error", Error: err}
+		return Result{Action: action, Status: "error", BackupPath: backupPath, Error: wrapPathError("reading source", sourcePath, err)}
 	}
 
 	if srcInfo.IsDir() {
 		if err := copyDir(sourcePath, action.Target); err != nil {
-			return Result{Action: action, Status: "error", Error: err}
+			return Result{Action: action, Status: "error", BackupPath: backupPath, Error: wrapPathError("copying directory", action.Target, err)}
 		}
 	} else {
 		if err := copyFile(sourcePath, action.Target, srcInfo.Mode()); err != nil {
-			return Result{Action: action, Status: "error", Error: err}
+			return Result{Action: action, Status: "error", BackupPath: backupPath, Error: wrapPathError("copying file", action.Target, err)}
 		}
 	}
 
@@ -179,7 +205,7 @@ func doCopy(action manifest.Action, sourcePath, targetDir, backupPath string) Re
 func copyFile(src, dst string, perm fs.FileMode) (err error) {
 	in, err := os.Open(src)
 	if err != nil {
-		return err
+		return wrapPathError("opening source file", src, err)
 	}
 	defer func() {
 		if closeErr := in.Close(); err == nil && closeErr != nil {
@@ -189,7 +215,7 @@ func copyFile(src, dst string, perm fs.FileMode) (err error) {
 
 	out, err := os.OpenFile(dst, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, perm)
 	if err != nil {
-		return err
+		return wrapPathError("opening destination file", dst, err)
 	}
 	defer func() {
 		if closeErr := out.Close(); err == nil && closeErr != nil {
@@ -198,28 +224,34 @@ func copyFile(src, dst string, perm fs.FileMode) (err error) {
 	}()
 
 	_, err = io.Copy(out, in)
-	return err
+	if err != nil {
+		return wrapPathError("copying file contents", dst, err)
+	}
+	return nil
 }
 
 func copyDir(src, dst string) error {
 	return filepath.WalkDir(src, func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
-			return err
+			return wrapPathError("walking source directory", path, err)
 		}
 
 		rel, relErr := filepath.Rel(src, path)
 		if relErr != nil {
-			return relErr
+			return fmt.Errorf("building relative path for %s: %w", path, relErr)
 		}
 		target := filepath.Join(dst, rel)
 
 		if d.IsDir() {
-			return os.MkdirAll(target, 0o755)
+			if err := os.MkdirAll(target, 0o755); err != nil {
+				return wrapPathError("creating directory", target, err)
+			}
+			return nil
 		}
 
 		info, infoErr := d.Info()
 		if infoErr != nil {
-			return infoErr
+			return wrapPathError("reading source file metadata", path, infoErr)
 		}
 		return copyFile(path, target, info.Mode())
 	})
@@ -258,4 +290,145 @@ func Summarize(results []Result) Summary {
 		}
 	}
 	return s
+}
+
+// RollbackResult describes one rollback action.
+type RollbackResult struct {
+	Action manifest.Action
+	Status string // "removed", "restored", "skipped", "error"
+	Error  error
+}
+
+// RollbackSummary counts rollback outcomes.
+type RollbackSummary struct {
+	Removed  int
+	Restored int
+	Skipped  int
+	Errors   int
+}
+
+// Rollback reverts filesystem changes created by Apply in reverse order.
+func Rollback(results []Result) []RollbackResult {
+	rolledBack := make([]RollbackResult, 0)
+
+	for i := len(results) - 1; i >= 0; i-- {
+		res := results[i]
+		if !needsRollback(res) {
+			continue
+		}
+		rolledBack = append(rolledBack, rollbackOne(res))
+	}
+
+	return rolledBack
+}
+
+// SummarizeRollback aggregates rollback results.
+func SummarizeRollback(results []RollbackResult) RollbackSummary {
+	var s RollbackSummary
+	for _, r := range results {
+		switch r.Status {
+		case "removed":
+			s.Removed++
+		case "restored":
+			s.Restored++
+		case "skipped":
+			s.Skipped++
+		case "error":
+			s.Errors++
+		}
+	}
+	return s
+}
+
+func needsRollback(r Result) bool {
+	switch r.Status {
+	case "created", "copied", "backed_up":
+		return true
+	case "error":
+		return r.BackupPath != ""
+	default:
+		return false
+	}
+}
+
+func rollbackOne(result Result) RollbackResult {
+	switch result.Status {
+	case "created", "copied":
+		if err := os.RemoveAll(result.Action.Target); err != nil && !os.IsNotExist(err) {
+			return RollbackResult{
+				Action: result.Action,
+				Status: "error",
+				Error:  fmt.Errorf("removing target %q: %w", result.Action.Target, err),
+			}
+		}
+		return RollbackResult{Action: result.Action, Status: "removed"}
+	case "backed_up":
+		if result.BackupPath == "" {
+			return RollbackResult{
+				Action: result.Action,
+				Status: "error",
+				Error:  fmt.Errorf("missing backup path for %q", result.Action.Target),
+			}
+		}
+		if err := restoreFromBackup(result.BackupPath, result.Action.Target); err != nil {
+			return RollbackResult{
+				Action: result.Action,
+				Status: "error",
+				Error:  err,
+			}
+		}
+		return RollbackResult{Action: result.Action, Status: "restored"}
+	case "error":
+		if result.BackupPath == "" {
+			return RollbackResult{Action: result.Action, Status: "skipped"}
+		}
+		if err := restoreFromBackup(result.BackupPath, result.Action.Target); err != nil {
+			return RollbackResult{
+				Action: result.Action,
+				Status: "error",
+				Error:  err,
+			}
+		}
+		return RollbackResult{Action: result.Action, Status: "restored"}
+	default:
+		return RollbackResult{Action: result.Action, Status: "skipped"}
+	}
+}
+
+func restoreFromBackup(backupPath, target string) error {
+	if err := os.RemoveAll(target); err != nil && !os.IsNotExist(err) {
+		return fmt.Errorf("removing target before restore: %w", err)
+	}
+
+	info, err := os.Lstat(backupPath)
+	if err != nil {
+		return fmt.Errorf("stat backup %q: %w", backupPath, err)
+	}
+
+	if err := os.MkdirAll(filepath.Dir(target), 0o755); err != nil {
+		return fmt.Errorf("creating target parent dir: %w", err)
+	}
+
+	if info.Mode()&os.ModeSymlink != 0 {
+		dest, readErr := os.Readlink(backupPath)
+		if readErr != nil {
+			return fmt.Errorf("reading backup symlink: %w", readErr)
+		}
+		if err := os.Symlink(dest, target); err != nil {
+			return fmt.Errorf("restoring symlink: %w", err)
+		}
+		return nil
+	}
+
+	if info.IsDir() {
+		if err := copyDir(backupPath, target); err != nil {
+			return fmt.Errorf("restoring directory: %w", err)
+		}
+		return nil
+	}
+
+	if err := copyFile(backupPath, target, info.Mode()); err != nil {
+		return fmt.Errorf("restoring file: %w", err)
+	}
+	return nil
 }
