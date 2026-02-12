@@ -1,5 +1,15 @@
 # Changelog
 
+## [1.4.0](https://github.com/felipe-veas/dotctl/compare/v1.3.0...v1.4.0) (2026-02-12)
+
+
+### Features
+
+* **core:** implement file decryption with age/sops support ([58713fd](https://github.com/felipe-veas/dotctl/commit/58713fd29bad5d8ddbd6fd8b661426ee2f49abe4))
+* post-MVP features (decryption, notifications, packaging) ([080f09e](https://github.com/felipe-veas/dotctl/commit/080f09e6675f5454c75746372f5087ca339ea926))
+* **tray:** implement native notifications for linux ([b32955c](https://github.com/felipe-veas/dotctl/commit/b32955c86eaf0e9d5f76f0573dd9f006c411e121))
+* **tray:** implement native notifications for macOS ([8735458](https://github.com/felipe-veas/dotctl/commit/8735458b05e029761e7929bc381eecd8e7e9c921))
+
 ## [1.3.0](https://github.com/felipe-veas/dotctl/compare/v1.2.0...v1.3.0) (2026-02-12)
 
 
