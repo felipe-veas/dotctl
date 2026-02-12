@@ -3,6 +3,7 @@ package linker
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/felipe-veas/dotctl/internal/manifest"
@@ -298,5 +299,116 @@ func TestApplySymlinkWrongTarget(t *testing.T) {
 	expected := filepath.Join(repoRoot, "configs", "zsh", ".zshrc")
 	if link != expected {
 		t.Errorf("link = %q, want %q", link, expected)
+	}
+}
+
+func TestRollbackCreatedRemovesTarget(t *testing.T) {
+	repoRoot, targetDir := setupRepo(t)
+	targetPath := filepath.Join(targetDir, ".zshrc")
+
+	actions := []manifest.Action{
+		{Source: "configs/zsh/.zshrc", Target: targetPath, Mode: "symlink", Backup: true},
+	}
+	results := Apply(actions, repoRoot, false)
+	if results[0].Status != "created" {
+		t.Fatalf("status = %q, want created", results[0].Status)
+	}
+
+	rollback := Rollback(results)
+	if len(rollback) != 1 {
+		t.Fatalf("rollback len = %d, want 1", len(rollback))
+	}
+	if rollback[0].Status != "removed" {
+		t.Fatalf("rollback status = %q, want removed", rollback[0].Status)
+	}
+	if _, err := os.Lstat(targetPath); !os.IsNotExist(err) {
+		t.Fatalf("target should be removed after rollback, err=%v", err)
+	}
+}
+
+func TestRollbackBackedUpRestoresOriginalFile(t *testing.T) {
+	repoRoot, targetDir := setupRepo(t)
+	targetPath := filepath.Join(targetDir, ".zshrc")
+	if err := os.WriteFile(targetPath, []byte("original"), 0o644); err != nil {
+		t.Fatalf("write original target: %v", err)
+	}
+
+	actions := []manifest.Action{
+		{Source: "configs/zsh/.zshrc", Target: targetPath, Mode: "symlink", Backup: true},
+	}
+	results := Apply(actions, repoRoot, false)
+	if results[0].Status != "backed_up" {
+		t.Fatalf("status = %q, want backed_up", results[0].Status)
+	}
+
+	rollback := Rollback(results)
+	if len(rollback) != 1 {
+		t.Fatalf("rollback len = %d, want 1", len(rollback))
+	}
+	if rollback[0].Status != "restored" {
+		t.Fatalf("rollback status = %q, want restored", rollback[0].Status)
+	}
+
+	data, err := os.ReadFile(targetPath)
+	if err != nil {
+		t.Fatalf("read restored target: %v", err)
+	}
+	if string(data) != "original" {
+		t.Fatalf("restored content = %q, want original", string(data))
+	}
+}
+
+func TestApplySourceSymlinkLoop(t *testing.T) {
+	repoRoot, targetDir := setupRepo(t)
+
+	loopSource := filepath.Join(repoRoot, "configs", "loop")
+	if err := os.Symlink(loopSource, loopSource); err != nil {
+		t.Fatalf("create source symlink loop: %v", err)
+	}
+
+	actions := []manifest.Action{
+		{Source: "configs/loop", Target: filepath.Join(targetDir, "loop-target"), Mode: "symlink", Backup: true},
+	}
+	results := Apply(actions, repoRoot, false)
+	if len(results) != 1 {
+		t.Fatalf("results = %d, want 1", len(results))
+	}
+	if results[0].Status != "error" {
+		t.Fatalf("status = %q, want error", results[0].Status)
+	}
+	if results[0].Error == nil || !strings.Contains(strings.ToLower(results[0].Error.Error()), "symlink loop") {
+		t.Fatalf("expected symlink loop error, got: %v", results[0].Error)
+	}
+}
+
+func TestApplyPermissionDeniedTarget(t *testing.T) {
+	if os.Geteuid() == 0 {
+		t.Skip("permission test is not reliable when running as root")
+	}
+
+	repoRoot, targetDir := setupRepo(t)
+	blockedDir := filepath.Join(targetDir, "blocked")
+	if err := os.MkdirAll(blockedDir, 0o755); err != nil {
+		t.Fatalf("mkdir blocked dir: %v", err)
+	}
+	if err := os.Chmod(blockedDir, 0o555); err != nil {
+		t.Fatalf("chmod blocked dir read-only: %v", err)
+	}
+	t.Cleanup(func() {
+		_ = os.Chmod(blockedDir, 0o755)
+	})
+
+	actions := []manifest.Action{
+		{Source: "configs/zsh/.zshrc", Target: filepath.Join(blockedDir, ".zshrc"), Mode: "symlink", Backup: true},
+	}
+	results := Apply(actions, repoRoot, false)
+	if len(results) != 1 {
+		t.Fatalf("results = %d, want 1", len(results))
+	}
+	if results[0].Status != "error" {
+		t.Fatalf("status = %q, want error", results[0].Status)
+	}
+	if results[0].Error == nil || !strings.Contains(strings.ToLower(results[0].Error.Error()), "permission denied") {
+		t.Fatalf("expected permission denied error, got: %v", results[0].Error)
 	}
 }
