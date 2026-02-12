@@ -159,6 +159,117 @@ func TestCLISyncIntegration(t *testing.T) {
 	}
 }
 
+func TestCLIBootstrapIntegration(t *testing.T) {
+	requireGit(t)
+	env := setupCLIIntegration(t, false)
+	initForIntegration(t, env)
+
+	manifestBody := "version: 1\nfiles:\n  - source: configs/zsh/.zshrc\n    target: ~/.zshrc\nhooks:\n  bootstrap:\n    - command: printf bootstrap-ok > bootstrap.marker\n"
+	if err := os.WriteFile(filepath.Join(env.clonePath, "manifest.yaml"), []byte(manifestBody), 0o644); err != nil {
+		t.Fatalf("write manifest with bootstrap hook: %v", err)
+	}
+
+	raw, err := executeCLI(t, "bootstrap", "--config", env.configPath, "--json")
+	if err != nil {
+		t.Fatalf("bootstrap failed: %v", err)
+	}
+
+	var response struct {
+		Hooks []struct {
+			Status string `json:"status"`
+		} `json:"hooks"`
+	}
+	if err := json.Unmarshal([]byte(raw), &response); err != nil {
+		t.Fatalf("parse bootstrap json: %v\nraw: %s", err, raw)
+	}
+	if len(response.Hooks) != 1 {
+		t.Fatalf("hooks = %d, want 1", len(response.Hooks))
+	}
+	if response.Hooks[0].Status != "ok" {
+		t.Fatalf("hook status = %q, want ok", response.Hooks[0].Status)
+	}
+
+	markerPath := filepath.Join(env.clonePath, "bootstrap.marker")
+	data, err := os.ReadFile(markerPath)
+	if err != nil {
+		t.Fatalf("read bootstrap marker: %v", err)
+	}
+	if strings.TrimSpace(string(data)) != "bootstrap-ok" {
+		t.Fatalf("marker content = %q, want bootstrap-ok", strings.TrimSpace(string(data)))
+	}
+}
+
+func TestCLIBootstrapDryRunIntegration(t *testing.T) {
+	requireGit(t)
+	env := setupCLIIntegration(t, false)
+	initForIntegration(t, env)
+
+	manifestBody := "version: 1\nfiles:\n  - source: configs/zsh/.zshrc\n    target: ~/.zshrc\nhooks:\n  bootstrap:\n    - command: printf should-not-run > dry-run.marker\n"
+	if err := os.WriteFile(filepath.Join(env.clonePath, "manifest.yaml"), []byte(manifestBody), 0o644); err != nil {
+		t.Fatalf("write manifest with bootstrap hook: %v", err)
+	}
+
+	raw, err := executeCLI(t, "bootstrap", "--config", env.configPath, "--dry-run", "--json")
+	if err != nil {
+		t.Fatalf("bootstrap dry-run failed: %v", err)
+	}
+
+	var response struct {
+		Hooks []struct {
+			Status string `json:"status"`
+		} `json:"hooks"`
+	}
+	if err := json.Unmarshal([]byte(raw), &response); err != nil {
+		t.Fatalf("parse bootstrap dry-run json: %v\nraw: %s", err, raw)
+	}
+	if len(response.Hooks) != 1 {
+		t.Fatalf("hooks = %d, want 1", len(response.Hooks))
+	}
+	if response.Hooks[0].Status != "would_run" {
+		t.Fatalf("hook status = %q, want would_run", response.Hooks[0].Status)
+	}
+
+	if _, err := os.Stat(filepath.Join(env.clonePath, "dry-run.marker")); err == nil {
+		t.Fatal("dry-run marker was created, expected no file")
+	} else if !os.IsNotExist(err) {
+		t.Fatalf("stat dry-run marker: %v", err)
+	}
+}
+
+func TestCLISyncRunsHooksIntegration(t *testing.T) {
+	requireGit(t)
+	env := setupCLIIntegration(t, false)
+	initForIntegration(t, env)
+
+	manifestBody := "version: 1\nfiles:\n  - source: configs/zsh/.zshrc\n    target: ~/.zshrc\nhooks:\n  pre_sync:\n    - command: printf pre > pre-sync.marker\n  post_sync:\n    - command: printf post > post-sync.marker\n"
+	if err := os.WriteFile(filepath.Join(env.clonePath, "manifest.yaml"), []byte(manifestBody), 0o644); err != nil {
+		t.Fatalf("write manifest with sync hooks: %v", err)
+	}
+	gitCmd(t, env.clonePath, "add", "manifest.yaml")
+	gitCmd(t, env.clonePath, "-c", "user.name=test", "-c", "user.email=test@example.com", "commit", "-m", "configure hooks for sync integration")
+	gitCmd(t, env.clonePath, "push", "origin", "HEAD")
+
+	if _, err := executeCLI(t, "sync", "--config", env.configPath); err != nil {
+		t.Fatalf("sync failed: %v", err)
+	}
+
+	preData, err := os.ReadFile(filepath.Join(env.clonePath, "pre-sync.marker"))
+	if err != nil {
+		t.Fatalf("read pre-sync marker: %v", err)
+	}
+	if strings.TrimSpace(string(preData)) != "pre" {
+		t.Fatalf("pre-sync marker content = %q, want pre", strings.TrimSpace(string(preData)))
+	}
+
+	postData, err := os.ReadFile(filepath.Join(env.clonePath, "post-sync.marker"))
+	if err != nil {
+		t.Fatalf("read post-sync marker: %v", err)
+	}
+	if strings.TrimSpace(string(postData)) != "post" {
+		t.Fatalf("post-sync marker content = %q, want post", strings.TrimSpace(string(postData)))
+	}
+}
+
 func TestCLIDoctorIntegration(t *testing.T) {
 	requireGit(t)
 	env := setupCLIIntegration(t, true)

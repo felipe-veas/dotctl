@@ -94,7 +94,7 @@ $ dotctl sync && dotctl sync  # segunda vez idempotente
 - [x] `dotctl open` — `platform.OpenURL(url)` (open/xdg-open)
 - [x] `dotctl doctor` — checks de auth + git + symlinks + manifest + OS info
 - [x] Soporte SSH URL (detección automática, no requiere `gh` si es SSH)
-- [ ] Tests: git operations en CI matrix (macOS + Linux)
+- [x] Tests: git operations en CI matrix (macOS + Linux)
 
 ### Criterio de éxito
 ```
@@ -120,26 +120,31 @@ $ dotctl open  # abre browser con xdg-open
 ## M3: Tray Apps — macOS menubar + Linux system tray (3 días)
 
 ### Entregables macOS (1.5 días)
-- [ ] `mac/StatusApp/` — proyecto Xcode
-- [ ] `AppDelegate.swift` — launch as menubar-only app (no dock icon)
-- [ ] `StatusBarController.swift` — menú con status, acciones, open repo
-- [ ] `DotctlBridge.swift` — ejecuta binario Go, parsea JSON
-- [ ] Íconos de estado: synced (verde), drift (amarillo), error (rojo), syncing (animado)
-- [ ] `scripts/build-app-macos.sh` — build universal binary (arm64+amd64) + embed en app
-- [ ] LaunchAgent plist (opt-in)
+- [x] `mac/StatusApp/` — scaffold Swift + estructura `StatusApp.xcodeproj/` + README
+- [x] `AppDelegate.swift` — launch as menubar-only app (no dock icon)
+- [x] `StatusBarController.swift` — menú con status, acciones, open repo
+- [x] `DotctlBridge.swift` — ejecuta binario Go, parsea JSON
+- [x] Estados de ícono en menubar: synced, drift, error, syncing (SF Symbols)
+- [x] `scripts/build-app-macos.sh` — build universal binary (arm64+amd64) + embed en app
+- [x] LaunchAgent plist (opt-in)
 
 ### Entregables Linux (1.5 días)
-- [ ] `linux/tray/` — app Go con getlantern/systray
-- [ ] `main.go` — setup de menú (misma estructura que macOS)
-- [ ] `bridge.go` — ejecuta dotctl binary, parsea JSON
-- [ ] PNG icons para tray (22x22: ok, warn, error, sync)
-- [ ] `.desktop` file para autostart
-- [ ] `scripts/build-tray-linux.sh` — build con CGO
-- [ ] systemd user service (alternativa a .desktop)
+- [x] `linux/tray/` — app Go con getlantern/systray
+- [x] `main.go` — setup de menú (misma estructura que macOS)
+- [x] `bridge.go` — ejecuta dotctl binary, parsea JSON
+- [x] PNG icons para tray (22x22: ok, warn, error, sync)
+- [x] `.desktop` file para autostart
+- [x] `scripts/build-tray-linux.sh` — build con CGO
+- [x] systemd user service (alternativa a .desktop)
 
 ### Entregables compartidos
-- [ ] `dotctl bootstrap` — ejecuta hooks del manifest (incluyendo instalar autostart si configurado)
-- [ ] Polling cada 60s en ambas plataformas
+- [x] `dotctl bootstrap` — ejecuta hooks `bootstrap` del manifest (autostart vía hooks/scripts)
+- [x] Polling cada 60s en ambas plataformas
+
+### Estado actual
+- Implementación de M3 completada en código y scripts.
+- Validación automática: tests Go en verde (`go test ./...`).
+- Validación manual pendiente por entorno: arranque visual de tray en GNOME/KDE y menubar/LaunchAgent en macOS.
 
 ### Criterio de éxito
 - **macOS**: app aparece en menubar, muestra estado, ejecuta acciones, abre repo
