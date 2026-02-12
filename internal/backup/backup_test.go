@@ -3,6 +3,7 @@ package backup
 import (
 	"os"
 	"path/filepath"
+	"sort"
 	"testing"
 )
 
@@ -106,5 +107,56 @@ func TestCreateNonexistent(t *testing.T) {
 	_, err := Create("/nonexistent/file")
 	if err == nil {
 		t.Fatal("expected error for nonexistent file")
+	}
+}
+
+func TestRotateKeepsLatestSnapshots(t *testing.T) {
+	dir := t.TempDir()
+	configHome := filepath.Join(dir, "config")
+	backupsDir := filepath.Join(configHome, "dotctl", "backups")
+	t.Setenv("XDG_CONFIG_HOME", configHome)
+
+	snapshots := []string{
+		"20260101-010101.000001",
+		"20260101-010101.000002",
+		"20260101-010101.000003",
+	}
+	for _, snap := range snapshots {
+		path := filepath.Join(backupsDir, snap)
+		if err := os.MkdirAll(path, 0o755); err != nil {
+			t.Fatalf("mkdir snapshot %s: %v", snap, err)
+		}
+		if err := os.WriteFile(filepath.Join(path, "a.txt"), []byte("x"), 0o644); err != nil {
+			t.Fatalf("write snapshot file: %v", err)
+		}
+	}
+
+	result, err := Rotate(2)
+	if err != nil {
+		t.Fatalf("Rotate: %v", err)
+	}
+	if result.Kept != 2 {
+		t.Fatalf("Kept = %d, want 2", result.Kept)
+	}
+	if result.Removed != 1 {
+		t.Fatalf("Removed = %d, want 1", result.Removed)
+	}
+
+	entries, err := os.ReadDir(backupsDir)
+	if err != nil {
+		t.Fatalf("read backups dir: %v", err)
+	}
+	names := make([]string, 0, len(entries))
+	for _, entry := range entries {
+		if entry.IsDir() {
+			names = append(names, entry.Name())
+		}
+	}
+	sort.Strings(names)
+	if len(names) != 2 {
+		t.Fatalf("remaining snapshots = %d, want 2 (%v)", len(names), names)
+	}
+	if names[0] != "20260101-010101.000002" || names[1] != "20260101-010101.000003" {
+		t.Fatalf("remaining snapshots = %v, want [..000002 ..000003]", names)
 	}
 }
