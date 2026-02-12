@@ -1,5 +1,23 @@
 # Changelog
 
+## [1.3.0](https://github.com/felipe-veas/dotctl/compare/v1.2.0...v1.3.0) (2026-02-12)
+
+
+### Features
+
+* **cmd:** enhance doctor with gitignore checks ([91b5d17](https://github.com/felipe-veas/dotctl/commit/91b5d179ac05f3030dcfcbc2d91fd57c3d65e3d5))
+* **core:** implement file locking and sync rollback ([da340c7](https://github.com/felipe-veas/dotctl/commit/da340c7172e50ba8e1d7a8b221acf260a6de6878))
+* **core:** implement logging, verbose mode, and gitops tracing ([68d1290](https://github.com/felipe-veas/dotctl/commit/68d129007a9d377f11b121584f40897bd3540d39))
+* **core:** improve auth error hints ([1ed3721](https://github.com/felipe-veas/dotctl/commit/1ed3721195a6ad0517abb9082d0dba226c882de5))
+* **linker:** add human-friendly filesystem error messages ([ca12deb](https://github.com/felipe-veas/dotctl/commit/ca12debcca75a1339af28ad26cf62fc4aa760a65))
+* M4 hardening (logging, locking, rollback, security) ([9384f01](https://github.com/felipe-veas/dotctl/commit/9384f01fd192c30023dddfa36ba33c02201a6a7d))
+* **manifest:** support ignore patterns filtering ([c91e559](https://github.com/felipe-veas/dotctl/commit/c91e55913a44e12335b78b5ca2e88d01db8de373))
+
+
+### Bug Fixes
+
+* **cmd:** add logging to hooks and integration tests ([59ab425](https://github.com/felipe-veas/dotctl/commit/59ab425ef1cd552c42168973d3ec30ba473b58c3))
+
 ## [1.2.0](https://github.com/felipe-veas/dotctl/compare/v1.1.0...v1.2.0) (2026-02-12)
 
 
