@@ -3,11 +3,16 @@ package gitops
 import (
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
+	"sync"
 	"time"
+
+	"github.com/felipe-veas/dotctl/internal/logging"
 )
 
 var (
@@ -18,6 +23,10 @@ var (
 
 	// ErrRepoDirty indicates the repository has uncommitted local changes.
 	ErrRepoDirty = errors.New("repository has uncommitted changes")
+
+	traceMu      sync.RWMutex
+	traceEnabled bool
+	traceWriter  io.Writer = os.Stderr
 )
 
 // InspectResult contains basic repository metadata.
@@ -36,6 +45,8 @@ type PushResult struct {
 }
 
 func runGit(dir string, args ...string) (string, error) {
+	traceGit(dir, args...)
+
 	cmd := exec.Command("git", args...)
 	if dir != "" {
 		cmd.Dir = dir
@@ -44,6 +55,9 @@ func runGit(dir string, args ...string) (string, error) {
 
 	out, err := cmd.CombinedOutput()
 	output := strings.TrimSpace(string(out))
+	logging.Debug("git command finished", "dir", resolvedDir(dir), "args", args, "exit_error", err != nil, "output", output)
+	traceGitOutput(output)
+
 	if err != nil {
 		op := "command"
 		if len(args) > 0 {
@@ -56,6 +70,76 @@ func runGit(dir string, args ...string) (string, error) {
 	}
 
 	return output, nil
+}
+
+// SetTrace configures verbose command tracing for git invocations.
+func SetTrace(enabled bool, writer io.Writer) {
+	traceMu.Lock()
+	defer traceMu.Unlock()
+
+	traceEnabled = enabled
+	if writer != nil {
+		traceWriter = writer
+		return
+	}
+	traceWriter = os.Stderr
+}
+
+func traceGit(dir string, args ...string) {
+	traceMu.RLock()
+	enabled := traceEnabled
+	w := traceWriter
+	traceMu.RUnlock()
+
+	if !enabled || w == nil {
+		return
+	}
+
+	_, _ = fmt.Fprintf(w, "[verbose] git (cwd=%s): git %s\n", resolvedDir(dir), joinCommandArgs(args))
+}
+
+func traceGitOutput(output string) {
+	traceMu.RLock()
+	enabled := traceEnabled
+	w := traceWriter
+	traceMu.RUnlock()
+
+	if !enabled || w == nil || output == "" {
+		return
+	}
+
+	_, _ = fmt.Fprintf(w, "[verbose] git output: %s\n", output)
+}
+
+func resolvedDir(dir string) string {
+	if strings.TrimSpace(dir) != "" {
+		return dir
+	}
+	cwd, err := os.Getwd()
+	if err != nil {
+		return "."
+	}
+	return cwd
+}
+
+func joinCommandArgs(args []string) string {
+	if len(args) == 0 {
+		return ""
+	}
+
+	parts := make([]string, 0, len(args))
+	for _, a := range args {
+		if a == "" {
+			parts = append(parts, `""`)
+			continue
+		}
+		if strings.ContainsAny(a, " \t\n\"'`$") {
+			parts = append(parts, strconv.Quote(a))
+			continue
+		}
+		parts = append(parts, a)
+	}
+	return strings.Join(parts, " ")
 }
 
 // IsSSHURL reports whether repoURL is an SSH Git URL.
@@ -181,7 +265,8 @@ func PullRebase(path string) (string, error) {
 
 	out, err := runGitCommand(path, "pull", "--rebase")
 	if err != nil {
-		return "", fmt.Errorf("pulling latest changes: %w", err)
+		wrapped := fmt.Errorf("pulling latest changes: %w", err)
+		return "", withPullHint(wrapped)
 	}
 
 	return out, nil
@@ -321,9 +406,34 @@ func Push(path, message, profile string, now time.Time) (PushResult, error) {
 	result.Message = message
 
 	if _, err := runGitCommand(path, "push"); err != nil {
-		return result, fmt.Errorf("pushing to origin: %w", err)
+		wrapped := fmt.Errorf("pushing to origin: %w", err)
+		return result, withPushHint(wrapped)
 	}
 	result.Pushed = true
 
 	return result, nil
+}
+
+func withPullHint(err error) error {
+	msg := strings.ToLower(err.Error())
+	switch {
+	case strings.Contains(msg, "conflict"), strings.Contains(msg, "unmerged files"), strings.Contains(msg, "could not apply"):
+		return fmt.Errorf("%w\nresolve rebase conflicts, then run: git rebase --continue (or --abort) and retry dotctl sync", err)
+	case strings.Contains(msg, "couldn't find remote ref"), strings.Contains(msg, "no such ref"):
+		return fmt.Errorf("%w\nremote branch/reference not found; verify origin branch configuration and repository access", err)
+	default:
+		return err
+	}
+}
+
+func withPushHint(err error) error {
+	msg := strings.ToLower(err.Error())
+	switch {
+	case strings.Contains(msg, "non-fast-forward"), strings.Contains(msg, "fetch first"), strings.Contains(msg, "rejected"):
+		return fmt.Errorf("%w\nremote contains newer commits; run dotctl pull, resolve conflicts if any, then retry dotctl push", err)
+	case strings.Contains(msg, "permission denied (publickey)"), strings.Contains(msg, "authentication failed"), strings.Contains(msg, "could not read from remote repository"):
+		return fmt.Errorf("%w\ngit authentication failed; verify SSH keys or GitHub credentials and retry", err)
+	default:
+		return err
+	}
 }

@@ -204,6 +204,22 @@ func TestTrackedFiles(t *testing.T) {
 	}
 }
 
+func TestWithPullHintConflict(t *testing.T) {
+	baseErr := errors.New("git pull failed: CONFLICT (content): Merge conflict in README.md")
+	err := withPullHint(baseErr)
+	if !strings.Contains(strings.ToLower(err.Error()), "resolve rebase conflicts") {
+		t.Fatalf("expected conflict hint, got: %v", err)
+	}
+}
+
+func TestWithPushHintNonFastForward(t *testing.T) {
+	baseErr := errors.New("git push failed: [rejected] main -> main (non-fast-forward)")
+	err := withPushHint(baseErr)
+	if !strings.Contains(strings.ToLower(err.Error()), "remote contains newer commits") {
+		t.Fatalf("expected non-fast-forward hint, got: %v", err)
+	}
+}
+
 func requireGit(t *testing.T) {
 	t.Helper()
 	if _, err := exec.LookPath("git"); err != nil {
