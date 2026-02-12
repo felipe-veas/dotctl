@@ -1,0 +1,5 @@
+version: 1
+
+files:
+  - source: configs/zsh/.zshrc
+    # target is missing — should fail validation

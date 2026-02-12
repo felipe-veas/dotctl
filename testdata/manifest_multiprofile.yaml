@@ -1,0 +1,26 @@
+version: 1
+
+vars:
+  config_home: "~/.config"
+
+files:
+  - source: configs/zsh/.zshrc
+    target: ~/.zshrc
+
+  - source: configs/wezterm/wezterm.lua
+    target: "{{ .config_home }}/wezterm/wezterm.lua"
+    when:
+      profile: [macstudio, laptop]
+
+  - source: configs/alacritty/alacritty.toml
+    target: "{{ .config_home }}/alacritty/alacritty.toml"
+    when:
+      profile: laptop
+
+  - source: configs/server/motd
+    target: /etc/motd
+    when:
+      profile: devserver
+      os: linux
+    mode: copy
+    backup: false
