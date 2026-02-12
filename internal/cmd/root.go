@@ -16,9 +16,9 @@ var (
 
 func NewRootCmd() *cobra.Command {
 	root := &cobra.Command{
-		Use:   "dotctl",
-		Short: "Sync dotfiles across machines (macOS + Linux)",
-		Long:  "dotctl syncs dotfiles/configs between devices using a private GitHub repo as source of truth.",
+		Use:           "dotctl",
+		Short:         "Sync dotfiles across machines (macOS + Linux)",
+		Long:          "dotctl syncs dotfiles/configs between devices using a private GitHub repo as source of truth.",
 		SilenceUsage:  true,
 		SilenceErrors: true,
 	}
@@ -35,6 +35,10 @@ func NewRootCmd() *cobra.Command {
 		newInitCmd(),
 		newStatusCmd(),
 		newSyncCmd(),
+		newPullCmd(),
+		newPushCmd(),
+		newOpenCmd(),
+		newDoctorCmd(),
 	)
 
 	return root

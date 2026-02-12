@@ -2,12 +2,13 @@ package cmd
 
 import (
 	"fmt"
-	"path/filepath"
+	"time"
 
+	"github.com/felipe-veas/dotctl/internal/config"
+	"github.com/felipe-veas/dotctl/internal/gitops"
 	"github.com/felipe-veas/dotctl/internal/linker"
 	"github.com/felipe-veas/dotctl/internal/manifest"
 	"github.com/felipe-veas/dotctl/internal/output"
-	"github.com/felipe-veas/dotctl/internal/profile"
 	"github.com/spf13/cobra"
 )
 
@@ -15,7 +16,7 @@ func newSyncCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "sync",
 		Short: "Pull, apply manifest, push changes",
-		Long:  "Syncs dotfiles: applies the manifest to create symlinks/copies. (Git pull/push will be added in M2.)",
+		Long:  "Syncs dotfiles with full flow: git pull --rebase, apply manifest, git push.",
 		Args:  cobra.NoArgs,
 		RunE:  runSync,
 	}
@@ -24,36 +25,55 @@ func newSyncCmd() *cobra.Command {
 func runSync(cmd *cobra.Command, args []string) error {
 	out := output.New(flagJSON)
 
-	cfg, _, err := resolveConfig()
+	cfg, cfgPath, err := resolveConfig()
 	if err != nil {
 		return err
 	}
 
-	// Resolve profile context
-	ctx := profile.Resolve(cfg.Profile)
-
-	// Load manifest
-	manifestPath := filepath.Join(cfg.Repo.Path, "manifest.yaml")
-	m, err := manifest.Load(manifestPath)
-	if err != nil {
-		return fmt.Errorf("loading manifest: %w", err)
+	pullOutput := ""
+	if !flagDryRun {
+		pullOutput, err = gitops.PullRebase(cfg.Repo.Path)
+		if err != nil {
+			return err
+		}
+		if !out.IsJSON() {
+			if pullOutput == "" {
+				out.Success("Pull complete")
+			} else {
+				out.Success("Pull complete: %s", pullOutput)
+			}
+		}
 	}
 
-	// Resolve actions
-	actions, skipped, err := manifest.Resolve(m, ctx, cfg.Repo.Path)
+	state, err := resolveManifestState(cfg)
 	if err != nil {
-		return fmt.Errorf("resolving manifest: %w", err)
+		return err
 	}
 
-	// Report skipped entries
-	for _, s := range skipped {
+	for _, s := range state.Skipped {
 		out.Info("Skipped: %s (%s)", s.Source, s.SkipReason)
 	}
 
-	if len(actions) == 0 {
-		out.Info("No actions to apply for profile %q on %s.", cfg.Profile, ctx.OS)
+	if len(state.Actions) == 0 {
+		out.Info("No actions to apply for profile %q on %s.", cfg.Profile, state.Context.OS)
+
+		var pushResult *gitops.PushResult
+		if !flagDryRun {
+			res, pushErr := gitops.Push(cfg.Repo.Path, "", cfg.Profile, time.Now())
+			if pushErr != nil {
+				return pushErr
+			}
+			pushResult = &res
+			if res.NothingToPush {
+				out.Info("Nothing to push")
+			}
+			if err := persistLastSync(cfgPath, cfg); err != nil {
+				return err
+			}
+		}
+
 		if out.IsJSON() {
-			return out.JSON(syncResult(nil, skipped, flagDryRun))
+			return out.JSON(syncResult(nil, state.Skipped, flagDryRun, pullOutput, pushResult))
 		}
 		return nil
 	}
@@ -61,13 +81,11 @@ func runSync(cmd *cobra.Command, args []string) error {
 	if flagDryRun {
 		out.Header("Dry run (no changes will be made):")
 	} else {
-		out.Header(fmt.Sprintf("Applying manifest (profile: %s, os: %s)...", cfg.Profile, ctx.OS))
+		out.Header(fmt.Sprintf("Applying manifest (profile: %s, os: %s)...", cfg.Profile, state.Context.OS))
 	}
 
-	// Apply actions
-	results := linker.Apply(actions, cfg.Repo.Path, flagDryRun)
+	results := linker.Apply(state.Actions, cfg.Repo.Path, flagDryRun)
 
-	// Print results
 	for _, r := range results {
 		switch r.Status {
 		case "created":
@@ -91,7 +109,6 @@ func runSync(cmd *cobra.Command, args []string) error {
 		}
 	}
 
-	// Summary
 	summary := linker.Summarize(results)
 	if !flagDryRun {
 		out.Info("")
@@ -99,22 +116,57 @@ func runSync(cmd *cobra.Command, args []string) error {
 			summary.Created+summary.Copied, summary.AlreadyOK, summary.BackedUp, summary.Errors)
 	}
 
-	if out.IsJSON() {
-		return out.JSON(syncResult(results, skipped, flagDryRun))
+	if summary.Errors > 0 {
+		if out.IsJSON() {
+			return out.JSON(syncResult(results, state.Skipped, flagDryRun, pullOutput, nil))
+		}
+		return fmt.Errorf("%d errors during sync", summary.Errors)
 	}
 
-	if summary.Errors > 0 {
-		return fmt.Errorf("%d errors during sync", summary.Errors)
+	var pushResult *gitops.PushResult
+	if !flagDryRun {
+		res, pushErr := gitops.Push(cfg.Repo.Path, "", cfg.Profile, time.Now())
+		if pushErr != nil {
+			return pushErr
+		}
+		pushResult = &res
+
+		if !out.IsJSON() {
+			if res.NothingToPush {
+				out.Info("Nothing to push")
+			} else {
+				out.Success("Pushed changes")
+			}
+		}
+
+		if err := persistLastSync(cfgPath, cfg); err != nil {
+			return err
+		}
+	}
+
+	if out.IsJSON() {
+		return out.JSON(syncResult(results, state.Skipped, flagDryRun, pullOutput, pushResult))
 	}
 
 	return nil
 }
 
+func persistLastSync(cfgPath string, cfg *config.Config) error {
+	now := time.Now().UTC()
+	cfg.LastSync = &now
+	if err := config.Save(cfgPath, cfg); err != nil {
+		return fmt.Errorf("saving last sync timestamp: %w", err)
+	}
+	return nil
+}
+
 type syncResultJSON struct {
-	DryRun  bool              `json:"dry_run"`
-	Applied []actionResultJSON `json:"applied"`
-	Skipped []skippedJSON      `json:"skipped"`
-	Summary summaryJSON        `json:"summary"`
+	DryRun     bool               `json:"dry_run"`
+	PullOutput string             `json:"pull_output,omitempty"`
+	Applied    []actionResultJSON `json:"applied"`
+	Skipped    []skippedJSON      `json:"skipped"`
+	Summary    summaryJSON        `json:"summary"`
+	Push       *gitops.PushResult `json:"push,omitempty"`
 }
 
 type actionResultJSON struct {
@@ -139,14 +191,14 @@ type summaryJSON struct {
 	Errors    int `json:"errors"`
 }
 
-func syncResult(results []linker.Result, skipped []manifest.Action, dryRun bool) syncResultJSON {
+func syncResult(results []linker.Result, skipped []manifest.Action, dryRun bool, pullOutput string, push *gitops.PushResult) syncResultJSON {
 	var applied []actionResultJSON
 	for _, r := range results {
 		ar := actionResultJSON{
-			Source: r.Action.Source,
-			Target: r.Action.Target,
-			Mode:   r.Action.Mode,
-			Status: r.Status,
+			Source:     r.Action.Source,
+			Target:     r.Action.Target,
+			Mode:       r.Action.Mode,
+			Status:     r.Status,
 			BackupPath: r.BackupPath,
 		}
 		if r.Error != nil {
@@ -166,14 +218,16 @@ func syncResult(results []linker.Result, skipped []manifest.Action, dryRun bool)
 
 	summary := linker.Summarize(results)
 	return syncResultJSON{
-		DryRun:  dryRun,
-		Applied: applied,
-		Skipped: skippedList,
+		DryRun:     dryRun,
+		PullOutput: pullOutput,
+		Applied:    applied,
+		Skipped:    skippedList,
 		Summary: summaryJSON{
 			Created:   summary.Created + summary.Copied,
 			AlreadyOK: summary.AlreadyOK,
 			BackedUp:  summary.BackedUp,
 			Errors:    summary.Errors,
 		},
+		Push: push,
 	}
 }
