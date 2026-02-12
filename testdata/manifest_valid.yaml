@@ -1,0 +1,39 @@
+version: 1
+
+vars:
+  config_home: "~/.config"
+
+files:
+  - source: configs/zsh/.zshrc
+    target: ~/.zshrc
+
+  - source: configs/git/.gitconfig
+    target: ~/.gitconfig
+
+  - source: configs/nvim
+    target: "{{ .config_home }}/nvim"
+
+  - source: configs/starship.toml
+    target: "{{ .config_home }}/starship.toml"
+
+  - source: configs/brew/Brewfile
+    target: "{{ .config_home }}/brew/Brewfile"
+    when:
+      os: darwin
+
+  - source: configs/apt/packages.txt
+    target: "{{ .config_home }}/apt/packages.txt"
+    when:
+      os: linux
+
+ignore:
+  - "*.token"
+  - ".env"
+
+hooks:
+  post_sync:
+    - command: echo "sync complete"
+  bootstrap:
+    - command: echo "bootstrapping"
+      when:
+        os: darwin
