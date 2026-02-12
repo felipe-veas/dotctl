@@ -157,19 +157,19 @@ $ dotctl open  # abre browser con xdg-open
 ## M4: Hardening (2 días)
 
 ### Entregables
-- [ ] Logging estructurado (`slog` stdlib): file log location por OS:
+- [x] Logging estructurado (`slog` stdlib): file log location por OS:
   - macOS: `~/.config/dotctl/dotctl.log`
   - Linux: `$XDG_STATE_HOME/dotctl/dotctl.log`
-- [ ] File locking: `flock` durante sync (funciona en macOS y Linux)
-- [ ] Rollback: si sync falla a mitad, revertir symlinks creados en esta ejecución
-- [ ] Hooks pre/post sync ejecutándose correctamente
-- [ ] Manejo de secretos: `.gitignore` patterns + validación en doctor
-- [ ] `--verbose` flag funcional (muestra comandos git, paths completos, OS info)
-- [ ] Error messages claros para todos los failure modes en ambos OS
-- [ ] CI: GitHub Actions matrix (macOS-latest + ubuntu-latest)
-- [ ] Manifest `ignore:` patterns aplicados
-- [ ] Edge cases: symlinks circulares, permisos incorrectos, disco lleno
-- [ ] `.goreleaser.yaml` con targets: darwin/{arm64,amd64}, linux/{amd64,arm64}
+- [x] File locking: `flock` durante sync (funciona en macOS y Linux)
+- [x] Rollback: si sync falla a mitad, revertir symlinks creados en esta ejecución
+- [x] Hooks pre/post sync ejecutándose correctamente
+- [x] Manejo de secretos: `.gitignore` patterns + validación en doctor
+- [x] `--verbose` flag funcional (muestra comandos git, paths completos, OS info)
+- [x] Error messages claros para todos los failure modes en ambos OS
+- [x] CI: GitHub Actions matrix (macOS-latest + ubuntu-latest)
+- [x] Manifest `ignore:` patterns aplicados
+- [x] Edge cases: symlinks circulares, permisos incorrectos, disco lleno
+- [x] `.goreleaser.yaml` con targets: darwin/{arm64,amd64}, linux/{amd64,arm64}
 
 ### Criterio de éxito
 - Tests verdes en CI matrix (macOS + Linux)
