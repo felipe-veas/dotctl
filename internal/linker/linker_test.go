@@ -201,6 +201,59 @@ func TestApplyCopy(t *testing.T) {
 	}
 }
 
+func TestApplyCopyDecrypt(t *testing.T) {
+	repoRoot, targetDir := setupRepo(t)
+
+	encryptedPath := filepath.Join(repoRoot, "configs", "secrets", "api.enc.yaml")
+	if err := os.MkdirAll(filepath.Dir(encryptedPath), 0o755); err != nil {
+		t.Fatalf("mkdir encrypted source dir: %v", err)
+	}
+	if err := os.WriteFile(encryptedPath, []byte("ENC[AES256_GCM,data:...]\n"), 0o600); err != nil {
+		t.Fatalf("write encrypted source: %v", err)
+	}
+
+	binDir := filepath.Join(t.TempDir(), "bin")
+	if err := os.MkdirAll(binDir, 0o755); err != nil {
+		t.Fatalf("mkdir bin dir: %v", err)
+	}
+	fakeSOPS := filepath.Join(binDir, "sops")
+	script := "#!/bin/sh\nprintf 'token: decrypted-from-sops\\n'"
+	if err := os.WriteFile(fakeSOPS, []byte(script), 0o755); err != nil {
+		t.Fatalf("write fake sops: %v", err)
+	}
+	t.Setenv("PATH", binDir+string(os.PathListSeparator)+os.Getenv("PATH"))
+
+	targetPath := filepath.Join(targetDir, ".config", "secrets", "api.yaml")
+	actions := []manifest.Action{
+		{
+			Source:  "configs/secrets/api.enc.yaml",
+			Target:  targetPath,
+			Mode:    "copy",
+			Decrypt: true,
+			Backup:  true,
+		},
+	}
+
+	results := Apply(actions, repoRoot, false)
+	if len(results) != 1 {
+		t.Fatalf("results = %d, want 1", len(results))
+	}
+	if results[0].Status != "copied" {
+		t.Fatalf("status = %q, want copied (error: %v)", results[0].Status, results[0].Error)
+	}
+	if !results[0].Decrypted {
+		t.Fatal("expected Decrypted=true")
+	}
+
+	data, err := os.ReadFile(targetPath)
+	if err != nil {
+		t.Fatalf("read decrypted target: %v", err)
+	}
+	if string(data) != "token: decrypted-from-sops\n" {
+		t.Fatalf("target content = %q, want decrypted plaintext", string(data))
+	}
+}
+
 func TestApplyCopyDir(t *testing.T) {
 	repoRoot, targetDir := setupRepo(t)
 

@@ -119,6 +119,38 @@ files:
 	}
 }
 
+func TestParseDecryptRequiresCopyMode(t *testing.T) {
+	data := []byte(`
+version: 1
+files:
+  - source: configs/secrets/api.enc.yaml
+    target: ~/.config/secrets/api.yaml
+    mode: symlink
+    decrypt: true
+`)
+
+	_, err := Parse(data)
+	if err == nil {
+		t.Fatal("expected error for decrypt=true with non-copy mode")
+	}
+}
+
+func TestParseDecryptRequiresEncryptedSourceName(t *testing.T) {
+	data := []byte(`
+version: 1
+files:
+  - source: configs/secrets/api.yaml
+    target: ~/.config/secrets/api.yaml
+    mode: copy
+    decrypt: true
+`)
+
+	_, err := Parse(data)
+	if err == nil {
+		t.Fatal("expected error for decrypt=true with non-encrypted source name")
+	}
+}
+
 func TestResolveTarget(t *testing.T) {
 	vars := map[string]string{
 		"home":        "/Users/test",
