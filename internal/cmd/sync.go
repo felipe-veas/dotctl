@@ -54,8 +54,27 @@ func runSync(cmd *cobra.Command, args []string) error {
 		out.Info("Skipped: %s (%s)", s.Source, s.SkipReason)
 	}
 
+	preHooks := manifest.ResolveHooks(state.Manifest.Hooks.PreSync, state.Context)
+	postHooks := manifest.ResolveHooks(state.Manifest.Hooks.PostSync, state.Context)
+
+	preHookResults, err := runHooks(out, "pre_sync", preHooks, cfg.Repo.Path, flagDryRun)
+	if err != nil {
+		if out.IsJSON() {
+			_ = out.JSON(syncResult(nil, state.Skipped, flagDryRun, pullOutput, nil, preHookResults, nil))
+		}
+		return err
+	}
+
 	if len(state.Actions) == 0 {
 		out.Info("No actions to apply for profile %q on %s.", cfg.Profile, state.Context.OS)
+
+		postHookResults, err := runHooks(out, "post_sync", postHooks, cfg.Repo.Path, flagDryRun)
+		if err != nil {
+			if out.IsJSON() {
+				_ = out.JSON(syncResult(nil, state.Skipped, flagDryRun, pullOutput, nil, preHookResults, postHookResults))
+			}
+			return err
+		}
 
 		var pushResult *gitops.PushResult
 		if !flagDryRun {
@@ -73,7 +92,7 @@ func runSync(cmd *cobra.Command, args []string) error {
 		}
 
 		if out.IsJSON() {
-			return out.JSON(syncResult(nil, state.Skipped, flagDryRun, pullOutput, pushResult))
+			return out.JSON(syncResult(nil, state.Skipped, flagDryRun, pullOutput, pushResult, preHookResults, postHookResults))
 		}
 		return nil
 	}
@@ -118,9 +137,17 @@ func runSync(cmd *cobra.Command, args []string) error {
 
 	if summary.Errors > 0 {
 		if out.IsJSON() {
-			return out.JSON(syncResult(results, state.Skipped, flagDryRun, pullOutput, nil))
+			return out.JSON(syncResult(results, state.Skipped, flagDryRun, pullOutput, nil, preHookResults, nil))
 		}
 		return fmt.Errorf("%d errors during sync", summary.Errors)
+	}
+
+	postHookResults, err := runHooks(out, "post_sync", postHooks, cfg.Repo.Path, flagDryRun)
+	if err != nil {
+		if out.IsJSON() {
+			_ = out.JSON(syncResult(results, state.Skipped, flagDryRun, pullOutput, nil, preHookResults, postHookResults))
+		}
+		return err
 	}
 
 	var pushResult *gitops.PushResult
@@ -145,7 +172,7 @@ func runSync(cmd *cobra.Command, args []string) error {
 	}
 
 	if out.IsJSON() {
-		return out.JSON(syncResult(results, state.Skipped, flagDryRun, pullOutput, pushResult))
+		return out.JSON(syncResult(results, state.Skipped, flagDryRun, pullOutput, pushResult, preHookResults, postHookResults))
 	}
 
 	return nil
@@ -161,12 +188,14 @@ func persistLastSync(cfgPath string, cfg *config.Config) error {
 }
 
 type syncResultJSON struct {
-	DryRun     bool               `json:"dry_run"`
-	PullOutput string             `json:"pull_output,omitempty"`
-	Applied    []actionResultJSON `json:"applied"`
-	Skipped    []skippedJSON      `json:"skipped"`
-	Summary    summaryJSON        `json:"summary"`
-	Push       *gitops.PushResult `json:"push,omitempty"`
+	DryRun        bool               `json:"dry_run"`
+	PullOutput    string             `json:"pull_output,omitempty"`
+	Applied       []actionResultJSON `json:"applied"`
+	Skipped       []skippedJSON      `json:"skipped"`
+	PreSyncHooks  []hookResultJSON   `json:"pre_sync_hooks,omitempty"`
+	PostSyncHooks []hookResultJSON   `json:"post_sync_hooks,omitempty"`
+	Summary       summaryJSON        `json:"summary"`
+	Push          *gitops.PushResult `json:"push,omitempty"`
 }
 
 type actionResultJSON struct {
@@ -191,7 +220,15 @@ type summaryJSON struct {
 	Errors    int `json:"errors"`
 }
 
-func syncResult(results []linker.Result, skipped []manifest.Action, dryRun bool, pullOutput string, push *gitops.PushResult) syncResultJSON {
+func syncResult(
+	results []linker.Result,
+	skipped []manifest.Action,
+	dryRun bool,
+	pullOutput string,
+	push *gitops.PushResult,
+	preHooks []hookResultJSON,
+	postHooks []hookResultJSON,
+) syncResultJSON {
 	var applied []actionResultJSON
 	for _, r := range results {
 		ar := actionResultJSON{
@@ -218,10 +255,12 @@ func syncResult(results []linker.Result, skipped []manifest.Action, dryRun bool,
 
 	summary := linker.Summarize(results)
 	return syncResultJSON{
-		DryRun:     dryRun,
-		PullOutput: pullOutput,
-		Applied:    applied,
-		Skipped:    skippedList,
+		DryRun:        dryRun,
+		PullOutput:    pullOutput,
+		Applied:       applied,
+		Skipped:       skippedList,
+		PreSyncHooks:  preHooks,
+		PostSyncHooks: postHooks,
 		Summary: summaryJSON{
 			Created:   summary.Created + summary.Copied,
 			AlreadyOK: summary.AlreadyOK,
