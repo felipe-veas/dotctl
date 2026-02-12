@@ -1,0 +1,62 @@
+version: 2
+
+project_name: dotctl
+
+before:
+  hooks:
+    - go mod tidy
+
+builds:
+  - id: dotctl
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+      - darwin
+    goarch:
+      - amd64
+      - arm64
+    main: ./cmd/dotctl
+    binary: dotctl
+    ldflags:
+      - -s -w -X github.com/felipe-veas/dotctl/internal/version.Version={{.Version}}
+
+archives:
+  - formats:
+      - tar.gz
+    name_template: >-
+      {{ .ProjectName }}_
+      {{- title .Os }}_
+      {{- if eq .Arch "amd64" }}x86_64
+      {{- else if eq .Arch "386" }}i386
+      {{- else }}{{ .Arch }}{{ end }}
+      {{- if .Arm }}v{{ .Arm }}{{ end }}
+
+checksum:
+  name_template: 'checksums.txt'
+
+snapshot:
+  version_template: "{{ incpatch .Version }}-next"
+
+changelog:
+  sort: asc
+  filters:
+    exclude:
+      - '^docs:'
+      - '^test:'
+
+brews:
+  - name: dotctl
+    repository:
+      owner: felipe-veas
+      name: homebrew-tap
+    commit_author:
+      name: goreleaserbot
+      email: bot@goreleaser.com
+    directory: Formula
+    homepage: "https://github.com/felipe-veas/dotctl"
+    description: "Sync dotfiles across machines (macOS + Linux)"
+    license: "MIT"
+    skip_upload: auto
+    test: |
+      system "#{bin}/dotctl version"
