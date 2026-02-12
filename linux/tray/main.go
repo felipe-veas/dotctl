@@ -45,6 +45,7 @@ const (
 type trayApp struct {
 	bridge    *dotctlBridge
 	bridgeErr error
+	notifier  *notifier
 
 	statusItem   *systray.MenuItem
 	lastSyncItem *systray.MenuItem
@@ -64,6 +65,7 @@ func main() {
 	app := &trayApp{
 		bridge:    bridge,
 		bridgeErr: err,
+		notifier:  newNotifier(),
 	}
 	systray.Run(app.onReady, app.onExit)
 }
@@ -114,17 +116,17 @@ func (a *trayApp) runLoop() {
 		case <-ticker.C:
 			a.refreshStatus()
 		case <-a.syncItem.ClickedCh:
-			a.runAction("syncing", syncCmdTimeout, a.bridge.sync, true)
+			a.runAction("sync", "syncing", syncCmdTimeout, a.bridge.sync, true, true)
 		case <-a.pullItem.ClickedCh:
-			a.runAction("pulling", defaultCmdTimeout, a.bridge.pull, true)
+			a.runAction("pull", "pulling", defaultCmdTimeout, a.bridge.pull, true, true)
 		case <-a.pushItem.ClickedCh:
-			a.runAction("pushing", defaultCmdTimeout, a.bridge.push, true)
+			a.runAction("push", "pushing", defaultCmdTimeout, a.bridge.push, true, true)
 		case <-a.doctorItem.ClickedCh:
-			a.runAction("running doctor", defaultCmdTimeout, a.bridge.doctor, true)
+			a.runAction("doctor", "running doctor", defaultCmdTimeout, a.bridge.doctor, true, true)
 		case <-a.openRepoItem.ClickedCh:
-			a.runAction("opening repo", defaultCmdTimeout, a.bridge.openRepo, false)
+			a.runAction("open repo", "opening repo", defaultCmdTimeout, a.bridge.openRepo, false, false)
 		case <-a.openConfigItem.ClickedCh:
-			a.runAction("opening config", defaultCmdTimeout, a.bridge.openConfig, false)
+			a.runAction("open config", "opening config", defaultCmdTimeout, a.bridge.openConfig, false, false)
 		case <-a.quitItem.ClickedCh:
 			systray.Quit()
 			return
@@ -132,7 +134,7 @@ func (a *trayApp) runLoop() {
 	}
 }
 
-func (a *trayApp) runAction(statusText string, timeout time.Duration, fn func(context.Context) error, refreshAfter bool) {
+func (a *trayApp) runAction(actionName, statusText string, timeout time.Duration, fn func(context.Context) error, refreshAfter, notify bool) {
 	a.disableActions(true)
 	a.statusItem.SetTitle("Status: " + statusText + "...")
 	a.setState(stateSyncing)
@@ -142,10 +144,16 @@ func (a *trayApp) runAction(statusText string, timeout time.Duration, fn func(co
 
 	if err := fn(ctx); err != nil {
 		a.setError(err)
+		if notify {
+			a.notifier.notifyError(actionName, err)
+		}
 		a.disableActions(false)
 		return
 	}
 
+	if notify {
+		a.notifier.notifySuccess(actionName)
+	}
 	if refreshAfter {
 		a.refreshStatus()
 	}

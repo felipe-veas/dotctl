@@ -71,6 +71,16 @@ func runSync(cmd *cobra.Command, args []string) (err error) {
 		return err
 	}
 
+	if decryptTool, decryptCount, decryptErr := detectDecryptToolForActions(state.Actions); decryptCount > 0 {
+		if decryptErr != nil {
+			return decryptErr
+		}
+		logging.Info("decrypt mode enabled", "entries", decryptCount, "tool", decryptTool)
+		if !out.IsJSON() {
+			out.Info("Decrypt enabled for %d file(s) using %s.", decryptCount, decryptTool)
+		}
+	}
+
 	for _, s := range state.Skipped {
 		out.Info("Skipped: %s (%s)", s.Source, s.SkipReason)
 	}
@@ -157,19 +167,35 @@ func runSync(cmd *cobra.Command, args []string) (err error) {
 		case "created":
 			out.Success("%s → %s (symlink created)", r.Action.Source, r.Action.Target)
 		case "copied":
-			out.Success("%s → %s (copied)", r.Action.Source, r.Action.Target)
+			if r.Decrypted {
+				out.Success("%s → %s (decrypted and copied)", r.Action.Source, r.Action.Target)
+			} else {
+				out.Success("%s → %s (copied)", r.Action.Source, r.Action.Target)
+			}
 		case "already_linked":
 			out.Success("%s → %s (already linked)", r.Action.Source, r.Action.Target)
 		case "backed_up":
-			out.Success("%s → %s (backed up to %s)", r.Action.Source, r.Action.Target, r.BackupPath)
+			if r.Decrypted {
+				out.Success("%s → %s (backed up to %s, decrypted and copied)", r.Action.Source, r.Action.Target, r.BackupPath)
+			} else {
+				out.Success("%s → %s (backed up to %s)", r.Action.Source, r.Action.Target, r.BackupPath)
+			}
 		case "would_create":
 			out.Info("  Would create symlink: %s → %s", r.Action.Source, r.Action.Target)
 		case "would_copy":
-			out.Info("  Would copy: %s → %s", r.Action.Source, r.Action.Target)
+			if r.Action.Decrypt {
+				out.Info("  Would decrypt and copy: %s → %s", r.Action.Source, r.Action.Target)
+			} else {
+				out.Info("  Would copy: %s → %s", r.Action.Source, r.Action.Target)
+			}
 		case "would_backup_and_link":
 			out.Info("  Would backup and link: %s → %s", r.Action.Source, r.Action.Target)
 		case "would_backup_and_copy":
-			out.Info("  Would backup and copy: %s → %s", r.Action.Source, r.Action.Target)
+			if r.Action.Decrypt {
+				out.Info("  Would backup, decrypt and copy: %s → %s", r.Action.Source, r.Action.Target)
+			} else {
+				out.Info("  Would backup and copy: %s → %s", r.Action.Source, r.Action.Target)
+			}
 		case "error":
 			out.Error("%s → %s: %v", r.Action.Source, r.Action.Target, r.Error)
 		}
@@ -261,8 +287,10 @@ type actionResultJSON struct {
 	Source     string `json:"source"`
 	Target     string `json:"target"`
 	Mode       string `json:"mode"`
+	Decrypt    bool   `json:"decrypt,omitempty"`
 	Status     string `json:"status"`
 	BackupPath string `json:"backup_path,omitempty"`
+	Decrypted  bool   `json:"decrypted,omitempty"`
 	Error      string `json:"error,omitempty"`
 }
 
@@ -302,8 +330,10 @@ func syncResult(
 			Source:     r.Action.Source,
 			Target:     r.Action.Target,
 			Mode:       r.Action.Mode,
+			Decrypt:    r.Action.Decrypt,
 			Status:     r.Status,
 			BackupPath: r.BackupPath,
+			Decrypted:  r.Decrypted,
 		}
 		if r.Error != nil {
 			ar.Error = r.Error.Error()

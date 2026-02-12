@@ -18,6 +18,7 @@ type cliTestEnv struct {
 	clonePath  string
 	configPath string
 	homePath   string
+	binPath    string
 }
 
 func TestCLIInitIntegration(t *testing.T) {
@@ -270,6 +271,51 @@ func TestCLISyncRunsHooksIntegration(t *testing.T) {
 	}
 }
 
+func TestCLISyncDecryptCopyIntegration(t *testing.T) {
+	requireGit(t)
+	env := setupCLIIntegration(t, false)
+	initForIntegration(t, env)
+
+	sopsScript := filepath.Join(env.binPath, "sops")
+	sopsBody := "#!/bin/sh\nprintf 'api_key: decrypted-value\\n'"
+	if err := os.WriteFile(sopsScript, []byte(sopsBody), 0o755); err != nil {
+		t.Fatalf("write fake sops script: %v", err)
+	}
+
+	writer := filepath.Join(t.TempDir(), "writer")
+	gitCmd(t, "", "clone", env.remotePath, writer)
+
+	encPath := filepath.Join(writer, "configs", "secrets", "api.enc.yaml")
+	if err := os.MkdirAll(filepath.Dir(encPath), 0o755); err != nil {
+		t.Fatalf("mkdir encrypted source path: %v", err)
+	}
+	if err := os.WriteFile(encPath, []byte("ENC[AES256_GCM,data:...]\n"), 0o600); err != nil {
+		t.Fatalf("write encrypted source: %v", err)
+	}
+
+	manifestBody := "version: 1\nfiles:\n  - source: configs/secrets/api.enc.yaml\n    target: ~/.config/decrypted/api.yaml\n    mode: copy\n    decrypt: true\n"
+	if err := os.WriteFile(filepath.Join(writer, "manifest.yaml"), []byte(manifestBody), 0o644); err != nil {
+		t.Fatalf("write decrypt manifest: %v", err)
+	}
+
+	gitCmd(t, writer, "add", "manifest.yaml", "configs/secrets/api.enc.yaml")
+	gitCmd(t, writer, "-c", "user.name=test", "-c", "user.email=test@example.com", "commit", "-m", "add decrypt copy entry")
+	gitCmd(t, writer, "push", "origin", "HEAD")
+
+	if _, err := executeCLI(t, "sync", "--config", env.configPath); err != nil {
+		t.Fatalf("sync failed: %v", err)
+	}
+
+	target := filepath.Join(env.homePath, ".config", "decrypted", "api.yaml")
+	data, err := os.ReadFile(target)
+	if err != nil {
+		t.Fatalf("read decrypted target: %v", err)
+	}
+	if strings.TrimSpace(string(data)) != "api_key: decrypted-value" {
+		t.Fatalf("decrypted target = %q, want api_key: decrypted-value", strings.TrimSpace(string(data)))
+	}
+}
+
 func TestCLISyncRollbackOnPostHookFailure(t *testing.T) {
 	requireGit(t)
 	env := setupCLIIntegration(t, false)
@@ -415,6 +461,7 @@ func setupCLIIntegration(t *testing.T, includeSensitive bool) cliTestEnv {
 		clonePath:  clonePath,
 		configPath: configPath,
 		homePath:   homePath,
+		binPath:    binPath,
 	}
 }
 

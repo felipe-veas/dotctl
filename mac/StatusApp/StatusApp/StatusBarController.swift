@@ -1,7 +1,8 @@
 import AppKit
 import Foundation
+import UserNotifications
 
-final class StatusBarController: NSObject {
+final class StatusBarController: NSObject, UNUserNotificationCenterDelegate {
     private enum UIState {
         case synced
         case warning
@@ -25,6 +26,8 @@ final class StatusBarController: NSObject {
 
     private var pollTimer: Timer?
     private var busy = false
+    private let notificationCenter = UNUserNotificationCenter.current()
+    private var notificationsAuthorized = false
 
     override init() {
         do {
@@ -36,6 +39,7 @@ final class StatusBarController: NSObject {
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
         super.init()
 
+        configureNotifications()
         configureMenu()
         setState(.syncing)
         startPolling()
@@ -68,6 +72,13 @@ final class StatusBarController: NSObject {
 
         statusItem.menu = menu
         setState(.syncing)
+    }
+
+    private func configureNotifications() {
+        notificationCenter.delegate = self
+        notificationCenter.requestAuthorization(options: [.alert, .sound]) { [weak self] granted, _ in
+            self?.notificationsAuthorized = granted
+        }
     }
 
     private func startPolling() {
@@ -161,7 +172,7 @@ final class StatusBarController: NSObject {
         }
     }
 
-    private func runAction(statusText: String, refreshAfter: Bool, _ action: @escaping () throws -> Void) {
+    private func runAction(actionName: String, statusText: String, refreshAfter: Bool, notify: Bool, _ action: @escaping () throws -> Void) {
         guard !busy else { return }
         setBusy(true)
         setState(.syncing)
@@ -180,7 +191,13 @@ final class StatusBarController: NSObject {
                 self.setBusy(false)
                 if let actionError {
                     self.showError(actionError)
+                    if notify {
+                        self.sendNotification(title: "dotctl \(actionName) failed", body: self.shortLine(actionError.localizedDescription, maxLength: 140))
+                    }
                     return
+                }
+                if notify {
+                    self.sendNotification(title: "dotctl \(actionName)", body: "completed successfully")
                 }
                 if refreshAfter {
                     self.refreshStatus()
@@ -190,31 +207,31 @@ final class StatusBarController: NSObject {
     }
 
     @objc private func syncAction() {
-        runAction(statusText: "syncing", refreshAfter: true) {
+        runAction(actionName: "sync", statusText: "syncing", refreshAfter: true, notify: true) {
             try self.bridge.sync()
         }
     }
 
     @objc private func pullAction() {
-        runAction(statusText: "pulling", refreshAfter: true) {
+        runAction(actionName: "pull", statusText: "pulling", refreshAfter: true, notify: true) {
             try self.bridge.pull()
         }
     }
 
     @objc private func pushAction() {
-        runAction(statusText: "pushing", refreshAfter: true) {
+        runAction(actionName: "push", statusText: "pushing", refreshAfter: true, notify: true) {
             try self.bridge.push()
         }
     }
 
     @objc private func doctorAction() {
-        runAction(statusText: "running doctor", refreshAfter: true) {
+        runAction(actionName: "doctor", statusText: "running doctor", refreshAfter: true, notify: true) {
             try self.bridge.doctor()
         }
     }
 
     @objc private func openRepoAction() {
-        runAction(statusText: "opening repo", refreshAfter: false) {
+        runAction(actionName: "open repo", statusText: "opening repo", refreshAfter: false, notify: false) {
             try self.bridge.openRepo()
         }
     }
@@ -241,5 +258,28 @@ final class StatusBarController: NSObject {
         }
         let end = normalized.index(normalized.startIndex, offsetBy: maxLength - 3)
         return String(normalized[..<end]) + "..."
+    }
+
+    private func sendNotification(title: String, body: String) {
+        guard notificationsAuthorized else { return }
+
+        let content = UNMutableNotificationContent()
+        content.title = title
+        content.body = body
+        content.sound = .default
+
+        let request = UNNotificationRequest(
+            identifier: UUID().uuidString,
+            content: content,
+            trigger: nil
+        )
+        notificationCenter.add(request, withCompletionHandler: nil)
+    }
+
+    func userNotificationCenter(
+        _ center: UNUserNotificationCenter,
+        willPresent notification: UNNotification
+    ) -> UNNotificationPresentationOptions {
+        return [.banner, .list, .sound]
     }
 }

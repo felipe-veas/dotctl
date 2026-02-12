@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 
 	"github.com/felipe-veas/dotctl/internal/backup"
+	"github.com/felipe-veas/dotctl/internal/decrypt"
 	"github.com/felipe-veas/dotctl/internal/manifest"
 )
 
@@ -17,6 +18,7 @@ type Result struct {
 	Action     manifest.Action
 	Status     string // "created", "already_linked", "backed_up", "copied", "skipped", "error"
 	BackupPath string // non-empty if a backup was created
+	Decrypted  bool
 	Error      error
 }
 
@@ -185,6 +187,10 @@ func doCopy(action manifest.Action, sourcePath, targetDir, backupPath string) Re
 		return Result{Action: action, Status: "error", BackupPath: backupPath, Error: wrapPathError("reading source", sourcePath, err)}
 	}
 
+	if action.Decrypt {
+		return doDecryptCopy(action, sourcePath, srcInfo, backupPath)
+	}
+
 	if srcInfo.IsDir() {
 		if err := copyDir(sourcePath, action.Target); err != nil {
 			return Result{Action: action, Status: "error", BackupPath: backupPath, Error: wrapPathError("copying directory", action.Target, err)}
@@ -200,6 +206,48 @@ func doCopy(action manifest.Action, sourcePath, targetDir, backupPath string) Re
 		status = "backed_up"
 	}
 	return Result{Action: action, Status: status, BackupPath: backupPath}
+}
+
+func doDecryptCopy(action manifest.Action, sourcePath string, srcInfo fs.FileInfo, backupPath string) Result {
+	if srcInfo.IsDir() {
+		return Result{
+			Action:     action,
+			Status:     "error",
+			BackupPath: backupPath,
+			Error:      fmt.Errorf("decrypt=true is not supported for directories: %s", action.Source),
+		}
+	}
+
+	plaintext, _, err := decrypt.DecryptFile(sourcePath)
+	if err != nil {
+		return Result{
+			Action:     action,
+			Status:     "error",
+			BackupPath: backupPath,
+			Error:      wrapPathError("decrypting source", sourcePath, err),
+		}
+	}
+
+	if err := os.WriteFile(action.Target, plaintext, srcInfo.Mode().Perm()); err != nil {
+		return Result{
+			Action:     action,
+			Status:     "error",
+			BackupPath: backupPath,
+			Error:      wrapPathError("writing decrypted file", action.Target, err),
+		}
+	}
+
+	status := "copied"
+	if backupPath != "" {
+		status = "backed_up"
+	}
+
+	return Result{
+		Action:     action,
+		Status:     status,
+		BackupPath: backupPath,
+		Decrypted:  true,
+	}
 }
 
 func copyFile(src, dst string, perm fs.FileMode) (err error) {

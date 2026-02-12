@@ -66,3 +66,15 @@ brews:
     skip_upload: auto
     test: |
       system "#{bin}/dotctl version"
+
+nfpms:
+  - id: linux-packages
+    package_name: dotctl
+    description: "Sync dotfiles across machines (macOS + Linux)"
+    maintainer: "Felipe Veas <felipeveas@users.noreply.github.com>"
+    homepage: "https://github.com/felipe-veas/dotctl"
+    license: "MIT"
+    bindir: /usr/bin
+    formats:
+      - deb
+      - rpm

@@ -13,6 +13,7 @@ type Action struct {
 	Source     string // relative path in repo
 	Target     string // absolute resolved target path
 	Mode       string // "symlink" or "copy"
+	Decrypt    bool   // whether source must be decrypted before copy
 	Backup     bool   // whether to backup existing file
 	SkipReason string // non-empty if skipped (for dry-run reporting)
 }
@@ -58,10 +59,11 @@ func Resolve(m *Manifest, ctx profile.Context, repoRoot string) (actions []Actio
 		}
 
 		actions = append(actions, Action{
-			Source: f.Source,
-			Target: resolvedTarget,
-			Mode:   f.LinkMode(),
-			Backup: f.ShouldBackup(),
+			Source:  f.Source,
+			Target:  resolvedTarget,
+			Mode:    f.LinkMode(),
+			Decrypt: f.Decrypt,
+			Backup:  f.ShouldBackup(),
 		})
 	}
 

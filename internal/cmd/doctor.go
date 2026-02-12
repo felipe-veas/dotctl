@@ -196,6 +196,24 @@ func runDoctor(cmd *cobra.Command, args []string) error {
 		}
 	}
 
+	if manifestErr == nil {
+		decryptTool, decryptCount, decryptErr := detectDecryptToolForActions(state.Actions)
+		if decryptCount > 0 {
+			if decryptErr != nil {
+				addCheck("decrypt", false, decryptErr.Error())
+				if !out.IsJSON() {
+					out.Error("decrypt: %v", decryptErr)
+				}
+			} else {
+				detail := fmt.Sprintf("decrypt ready (%d entries, tool: %s)", decryptCount, decryptTool)
+				addCheck("decrypt", true, detail)
+				if !out.IsJSON() {
+					out.Success("%s", detail)
+				}
+			}
+		}
+	}
+
 	if !out.IsJSON() {
 		out.Header("Symlinks:")
 	}

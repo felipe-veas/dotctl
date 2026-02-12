@@ -129,7 +129,7 @@ func TestResolveDefaultMode(t *testing.T) {
 	m := &Manifest{
 		Files: []FileEntry{
 			{Source: "a", Target: "~/.a"},
-			{Source: "b", Target: "~/.b", Mode: "copy"},
+			{Source: "b", Target: "~/.b", Mode: "copy", Decrypt: true},
 		},
 	}
 
@@ -144,6 +144,9 @@ func TestResolveDefaultMode(t *testing.T) {
 	}
 	if actions[1].Mode != "copy" {
 		t.Errorf("explicit mode = %q, want %q", actions[1].Mode, "copy")
+	}
+	if !actions[1].Decrypt {
+		t.Errorf("decrypt = %v, want true", actions[1].Decrypt)
 	}
 }
 

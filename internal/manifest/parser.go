@@ -3,6 +3,7 @@ package manifest
 import (
 	"fmt"
 	"os"
+	"path"
 	"strings"
 	"text/template"
 
@@ -47,12 +48,25 @@ func validate(m *Manifest) error {
 		if mode != "symlink" && mode != "copy" {
 			return fmt.Errorf("files[%d]: invalid mode %q (must be 'symlink' or 'copy')", i, mode)
 		}
+		if f.Decrypt {
+			if mode != "copy" {
+				return fmt.Errorf("files[%d]: decrypt=true requires mode=copy", i)
+			}
+			if !hasEncryptedSuffix(f.Source) {
+				return fmt.Errorf("files[%d]: decrypt=true requires encrypted source name containing '.enc.'", i)
+			}
+		}
 		if seen[f.Target] {
 			return fmt.Errorf("files[%d]: duplicate target %q", i, f.Target)
 		}
 		seen[f.Target] = true
 	}
 	return nil
+}
+
+func hasEncryptedSuffix(source string) bool {
+	base := strings.ToLower(strings.TrimSpace(path.Base(source)))
+	return strings.Contains(base, ".enc.")
 }
 
 // ResolveTarget resolves template variables in a target path.
