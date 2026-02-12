@@ -186,9 +186,9 @@ $ dotctl open  # abre browser con xdg-open
 | P1 | Cifrado con `age`/`sops` (decrypt: true en manifest) | 2d | done |
 | P1 | `goreleaser` release pipeline + Homebrew tap + .deb/.rpm | 1d | done |
 | P1 | Notificaciones nativas (macOS: UserNotifications, Linux: libnotify) | 1d | done |
-| P2 | File watcher (fsnotify) para sync automático | 2d | pending |
-| P2 | Backup rotation (mantener últimos N backups) | 0.5d | pending |
-| P2 | `dotctl diff` — muestra diff entre repo y estado actual | 1d | pending |
-| P3 | Snap package para Linux | 1d | pending |
-| P3 | AUR package para Arch Linux | 0.5d | pending |
-| P3 | Multi-repo support | 3d | pending |
+| P2 | File watcher (fsnotify) para sync automático | 2d | done |
+| P2 | Backup rotation (mantener últimos N backups) | 0.5d | done |
+| P2 | `dotctl diff` — muestra diff entre repo y estado actual | 1d | done |
+| P3 | Snap package para Linux | 1d | done |
+| P3 | AUR package para Arch Linux | 0.5d | done |
+| P3 | Multi-repo support | 3d | done |
