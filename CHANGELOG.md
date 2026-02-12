@@ -1,5 +1,15 @@
 # Changelog
 
+## [1.5.0](https://github.com/felipe-veas/dotctl/compare/v1.4.0...v1.5.0) (2026-02-12)
+
+
+### Features
+
+* **backup:** implement backup rotation to limit stored snapshots ([8d557e7](https://github.com/felipe-veas/dotctl/commit/8d557e712923f931f907e58125629ef11a0b139e))
+* **cli:** enhance multi-repo support in doctor and tests ([1c30e86](https://github.com/felipe-veas/dotctl/commit/1c30e86eafc48f815c916141c85365c3ff78f990))
+* **cmd:** add diff and watch commands ([8c78d1b](https://github.com/felipe-veas/dotctl/commit/8c78d1b556d2c6ac009092c56eca36253d8cce0c))
+* Multi-repo enhancements, watch command, and packaging ([bb37843](https://github.com/felipe-veas/dotctl/commit/bb3784399821613e05dc6b9db6c56d2b4b6471a9))
+
 ## [1.4.0](https://github.com/felipe-veas/dotctl/compare/v1.3.0...v1.4.0) (2026-02-12)
 
 
