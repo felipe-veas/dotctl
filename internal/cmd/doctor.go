@@ -19,6 +19,7 @@ type doctorCheck struct {
 
 type doctorReport struct {
 	Profile  string              `json:"profile"`
+	RepoName string              `json:"repo_name,omitempty"`
 	OS       string              `json:"os"`
 	Arch     string              `json:"arch"`
 	RepoPath string              `json:"repo_path"`
@@ -47,6 +48,7 @@ func runDoctor(cmd *cobra.Command, args []string) error {
 
 	report := doctorReport{
 		Profile:  cfg.Profile,
+		RepoName: cfg.Repo.Name,
 		OS:       runtime.GOOS,
 		Arch:     runtime.GOARCH,
 		RepoPath: cfg.Repo.Path,
