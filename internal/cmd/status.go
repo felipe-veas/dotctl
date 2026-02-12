@@ -34,6 +34,7 @@ func runStatus(cmd *cobra.Command, args []string) error {
 		OS:      runtime.GOOS,
 		Arch:    runtime.GOARCH,
 		Repo: types.RepoStatus{
+			Name:   cfg.Repo.Name,
 			URL:    cfg.Repo.URL,
 			Status: "not cloned",
 		},
@@ -105,6 +106,9 @@ func runStatus(cmd *cobra.Command, args []string) error {
 
 	out.Field("Profile", status.Profile)
 	out.Field("OS", status.OS+"/"+status.Arch)
+	if status.Repo.Name != "" {
+		out.Field("Repo name", status.Repo.Name)
+	}
 	out.Field("Repo", status.Repo.URL+" ("+status.Repo.Status+")")
 	if status.Repo.Branch != "" {
 		out.Field("Branch", status.Repo.Branch)
