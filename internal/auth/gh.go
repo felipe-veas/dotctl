@@ -55,7 +55,11 @@ func EnsureGHAuthenticated() (string, error) {
 
 	out, err := runCmd("gh", "auth", "status")
 	if err != nil {
-		return "", fmt.Errorf("gh not authenticated — run: gh auth login --web")
+		detail := authFailureDetail(string(out))
+		if detail != "" {
+			return "", fmt.Errorf("gh not authenticated on %s — run: gh auth login --web (%s)", runtime.GOOS, detail)
+		}
+		return "", fmt.Errorf("gh not authenticated on %s — run: gh auth login --web", runtime.GOOS)
 	}
 
 	return extractUser(string(out)), nil
@@ -91,6 +95,24 @@ func extractUser(out string) string {
 				}
 			}
 		}
+	}
+
+	return ""
+}
+
+func authFailureDetail(out string) string {
+	out = strings.TrimSpace(out)
+	if out == "" {
+		return ""
+	}
+
+	lines := strings.Split(out, "\n")
+	for _, line := range lines {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+		return line
 	}
 
 	return ""
