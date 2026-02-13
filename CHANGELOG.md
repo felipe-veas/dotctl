@@ -4,14 +4,12 @@
 
 ## [1.9.0](https://github.com/felipe-veas/dotctl/compare/v1.8.0...v1.9.0) (2026-02-13)
 
-
 ### Features
 
 * **manifest:** automatically copy suggested config files to repo ([a1ecdb6](https://github.com/felipe-veas/dotctl/commit/a1ecdb6d2d992bc848180f59e5ec60be03f7dd9e))
 * **manifest:** automatically copy suggested config files to repo ([209efe8](https://github.com/felipe-veas/dotctl/commit/209efe8001b30157aba7d80584a29516cd5161d9))
 
 ## [1.8.0](https://github.com/felipe-veas/dotctl/compare/v1.7.1...v1.8.0) (2026-02-13)
-
 
 ### Features
 
