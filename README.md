@@ -102,11 +102,16 @@ Historical planning archive:
 
 ## Quickstart
 
+Recommended onboarding for most users: initialize dotctl, run the config scan, review the suggested manifest, then sync.
+
 ### 1. Prepare your private dotfiles repo
 
-Your repo should contain a `manifest.yaml` at the root and the files you want to manage.
+Create a private repository to store your dotfiles.
 
-Example:
+- If this is a new setup, the repo can start empty.
+- If you already have dotfiles managed, keep your existing `manifest.yaml` and `configs/` layout.
+
+Typical structure after setup:
 
 ```text
 dotfiles/
@@ -117,27 +122,7 @@ dotfiles/
     nvim/
 ```
 
-### 2. Create a `manifest.yaml`
-
-```yaml
-version: 1
-
-vars:
-  config_home: "~/.config"
-
-files:
-  - source: configs/zsh/.zshrc
-    target: ~/.zshrc
-
-  - source: configs/git/.gitconfig
-    target: ~/.gitconfig
-
-  - source: configs/nvim
-    target: "{{ .config_home }}/nvim"
-    mode: copy
-```
-
-### 3. Initialize dotctl on a machine
+### 2. Initialize dotctl on a machine
 
 Using SSH URL:
 
@@ -157,13 +142,44 @@ You can also set a custom clone location:
 dotctl init --repo <repo-url> --profile laptop --path /custom/path
 ```
 
-Generate a suggested manifest by scanning common config paths (asks for confirmation first):
+### 3. Generate a suggested manifest (recommended)
+
+Scan common config paths (asks for confirmation first):
 
 ```bash
 dotctl manifest suggest
 ```
 
-### 4. Validate and sync
+Then:
+
+1. Review `manifest.suggested.yaml`.
+2. Copy the selected local config files/directories into your repo under the suggested `source` paths.
+3. Merge selected entries into `manifest.yaml`.
+4. Commit and push those changes.
+
+### 4. Manual manifest path (optional)
+
+If you prefer full manual control, create `manifest.yaml` directly:
+
+```yaml
+version: 1
+
+vars:
+  config_home: "~/.config"
+
+files:
+  - source: configs/zsh/.zshrc
+    target: ~/.zshrc
+
+  - source: configs/git/.gitconfig
+    target: ~/.gitconfig
+
+  - source: configs/nvim
+    target: "{{ .config_home }}/nvim"
+    mode: copy
+```
+
+### 5. Validate and sync
 
 ```bash
 dotctl doctor
@@ -217,12 +233,30 @@ Useful global flags:
 - use `--dry-run` to preview without writing files
 - use `--output <path>` to customize output file location
 
+Current scan candidates include:
+
+- Home files: `.zshrc`, `.zprofile`, `.bashrc`, `.bash_profile`, `.profile`, `.gitconfig`, `.gitignore`, `.tmux.conf`, `.vimrc`
+- `~/.config` entries: `nvim`, `wezterm`, `kitty`, `alacritty`, `starship.toml`, `fish`, `gh`, `bat`, `tmux`, `helix`, `lazygit`, `ghostty`
+
 Example flow:
 
 ```bash
 dotctl manifest suggest
 # review manifest.suggested.yaml
 # merge selected entries into manifest.yaml
+```
+
+Other common usage:
+
+```bash
+# non-interactive
+dotctl manifest suggest --force
+
+# preview only
+dotctl manifest suggest --dry-run --force
+
+# custom output filename/path
+dotctl manifest suggest --output manifest.suggested.work.yaml --force
 ```
 
 JSON mode note:
