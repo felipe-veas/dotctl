@@ -1,4 +1,6 @@
 # Maintainer: Felipe Veas <felipeveas@users.noreply.github.com>
+# shellcheck shell=bash
+# shellcheck disable=SC2034,SC2154
 
 pkgname=dotctl-git
 pkgver=r1.0
@@ -15,24 +17,24 @@ source=('git+https://github.com/felipe-veas/dotctl.git')
 sha256sums=('SKIP')
 
 pkgver() {
-  cd "${srcdir}/dotctl"
+  cd "${srcdir}/dotctl" || return 1
   printf "r%s.%s" "$(git rev-list --count HEAD)" "$(git rev-parse --short HEAD)"
 }
 
 build() {
-  cd "${srcdir}/dotctl"
+  cd "${srcdir}/dotctl" || return 1
   export CGO_ENABLED=0
   export GOFLAGS='-buildvcs=false'
   go build -trimpath -ldflags "-s -w -X github.com/felipe-veas/dotctl/internal/version.Version=${pkgver}" -o dotctl ./cmd/dotctl
 }
 
 check() {
-  cd "${srcdir}/dotctl"
+  cd "${srcdir}/dotctl" || return 1
   go test ./internal/config ./internal/manifest ./internal/linker -count=1
 }
 
 package() {
-  cd "${srcdir}/dotctl"
+  cd "${srcdir}/dotctl" || return 1
   install -Dm755 dotctl "${pkgdir}/usr/bin/dotctl"
   install -Dm644 LICENSE "${pkgdir}/usr/share/licenses/${pkgname}/LICENSE"
   install -Dm644 README.md "${pkgdir}/usr/share/doc/${pkgname}/README.md"
