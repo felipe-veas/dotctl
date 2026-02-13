@@ -394,13 +394,9 @@ func Push(path, message, profile string, now time.Time) (PushResult, error) {
 		message = DefaultCommitMessage(profile, now)
 	}
 
-	if _, err := runGitCommand(path,
-		"-c", "user.name=dotctl",
-		"-c", "user.email=dotctl@localhost",
-		"-c", "commit.gpgsign=false",
-		"commit", "-m", message,
-	); err != nil {
-		return result, fmt.Errorf("creating commit: %w", err)
+	if _, err := runGitCommand(path, "commit", "-m", message); err != nil {
+		wrapped := fmt.Errorf("creating commit: %w", err)
+		return result, withCommitHint(wrapped)
 	}
 	result.Committed = true
 	result.Message = message
@@ -421,6 +417,19 @@ func withPullHint(err error) error {
 		return fmt.Errorf("%w\nresolve rebase conflicts, then run: git rebase --continue (or --abort) and retry dotctl sync", err)
 	case strings.Contains(msg, "couldn't find remote ref"), strings.Contains(msg, "no such ref"):
 		return fmt.Errorf("%w\nremote branch/reference not found; verify origin branch configuration and repository access", err)
+	default:
+		return err
+	}
+}
+
+func withCommitHint(err error) error {
+	msg := strings.ToLower(err.Error())
+	switch {
+	case strings.Contains(msg, "author identity unknown"),
+		strings.Contains(msg, "please tell me who you are"),
+		strings.Contains(msg, "unable to auto-detect email address"),
+		strings.Contains(msg, "empty ident name"):
+		return fmt.Errorf("%w\nconfigure git identity (user.name and user.email) in this repo or globally, then retry dotctl push", err)
 	default:
 		return err
 	}
