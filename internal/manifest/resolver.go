@@ -24,9 +24,14 @@ func Resolve(m *Manifest, ctx profile.Context, repoRoot string) (actions []Actio
 	vars := MergeVars(m.Vars, ctx.Vars())
 
 	for _, f := range m.Files {
-		if pattern, ignored := matchedIgnorePattern(f.Source, m.Ignore); ignored {
+		source, sourceErr := normalizeSourcePath(f.Source)
+		if sourceErr != nil {
+			return nil, nil, sourceErr
+		}
+
+		if pattern, ignored := matchedIgnorePattern(source, m.Ignore); ignored {
 			skipped = append(skipped, Action{
-				Source:     f.Source,
+				Source:     source,
 				Target:     f.Target,
 				SkipReason: "ignored by pattern " + pattern,
 			})
@@ -36,7 +41,7 @@ func Resolve(m *Manifest, ctx profile.Context, repoRoot string) (actions []Actio
 		// Evaluate conditions
 		if !f.When.OS.Matches(ctx.OS) {
 			skipped = append(skipped, Action{
-				Source:     f.Source,
+				Source:     source,
 				Target:     f.Target,
 				SkipReason: "os: " + ctx.OS + " not in " + sliceStr(f.When.OS),
 			})
@@ -45,7 +50,7 @@ func Resolve(m *Manifest, ctx profile.Context, repoRoot string) (actions []Actio
 
 		if !f.When.Profile.Matches(ctx.Profile) {
 			skipped = append(skipped, Action{
-				Source:     f.Source,
+				Source:     source,
 				Target:     f.Target,
 				SkipReason: "profile: " + ctx.Profile + " not in " + sliceStr(f.When.Profile),
 			})
@@ -59,7 +64,7 @@ func Resolve(m *Manifest, ctx profile.Context, repoRoot string) (actions []Actio
 		}
 
 		actions = append(actions, Action{
-			Source:  f.Source,
+			Source:  source,
 			Target:  resolvedTarget,
 			Mode:    f.LinkMode(),
 			Decrypt: f.Decrypt,
