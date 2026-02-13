@@ -132,7 +132,7 @@ jobs:
         run: ./scripts/build-tray-linux.sh
 
       - name: Upload tray artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: dotctl-tray-linux-${{ matrix.arch }}
           path: bin/dotctl-tray

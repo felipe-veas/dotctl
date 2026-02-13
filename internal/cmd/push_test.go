@@ -80,6 +80,40 @@ func TestDetectPushScopeDifferentNonRepoCWD(t *testing.T) {
 	}
 }
 
+func TestPreflightSecretsCheckBlocksSensitive(t *testing.T) {
+	repo := filepath.Join(t.TempDir(), "repo")
+	initGitRepo(t, repo)
+
+	// Add a sensitive file.
+	if err := os.WriteFile(filepath.Join(repo, ".env"), []byte("SECRET=x"), 0o644); err != nil {
+		t.Fatalf("write .env: %v", err)
+	}
+	gitCmdPushTest(t, repo, "add", ".env")
+	gitCmdPushTest(t, repo, "-c", "user.name=test", "-c", "user.email=test@example.com", "commit", "-m", "add env")
+
+	warns := preflightSecretsCheck(repo)
+	if len(warns) == 0 {
+		t.Fatal("expected warnings for unencrypted .env")
+	}
+}
+
+func TestPreflightSecretsCheckAllowsEncrypted(t *testing.T) {
+	repo := filepath.Join(t.TempDir(), "repo")
+	initGitRepo(t, repo)
+
+	// Add an encrypted file (should not trigger warning).
+	if err := os.WriteFile(filepath.Join(repo, ".env.enc"), []byte("ciphertext"), 0o644); err != nil {
+		t.Fatalf("write .env.enc: %v", err)
+	}
+	gitCmdPushTest(t, repo, "add", ".env.enc")
+	gitCmdPushTest(t, repo, "-c", "user.name=test", "-c", "user.email=test@example.com", "commit", "-m", "add enc")
+
+	warns := preflightSecretsCheck(repo)
+	if len(warns) != 0 {
+		t.Fatalf("expected no warnings for encrypted file, got: %v", warns)
+	}
+}
+
 func setCWD(t *testing.T, dir string) {
 	t.Helper()
 

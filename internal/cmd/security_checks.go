@@ -45,6 +45,11 @@ func isSensitiveTrackedPath(p string) bool {
 	lower := strings.ToLower(normalized)
 	base := strings.ToLower(path.Base(lower))
 
+	// Encrypted files are safe — skip them.
+	if strings.Contains(base, ".enc.") || strings.HasSuffix(base, ".enc") {
+		return false
+	}
+
 	if strings.HasPrefix(lower, ".ssh/") || strings.Contains(lower, "/.ssh/") {
 		return true
 	}

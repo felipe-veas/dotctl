@@ -13,6 +13,7 @@ It is designed for:
 - Declarative sync from `manifest.yaml`
 - `symlink` and `copy` file modes
 - Optional encrypted file deployment (`decrypt: true` with `sops` or `age`)
+- Built-in secrets management (`dotctl secrets` with age encryption)
 - Suggested manifest generation from common local config paths (`dotctl manifest suggest`)
 - Pre/post sync hooks plus bootstrap hooks
 - Multi-repo support (`dotctl repos ...`)
@@ -142,6 +143,29 @@ You can also set a custom clone location:
 dotctl init --repo <repo-url> --profile laptop --path /custom/path
 ```
 
+During init, dotctl also ensures recommended default ignore patterns in repo `.gitignore`:
+
+```gitignore
+.DS_Store
+Thumbs.db
+.env
+.env.*
+*.pem
+*.key
+*.p12
+*.pfx
+*.token
+*credentials*
+*secret*
+!configs/secrets/
+!configs/secrets/**
+!configs/credentials/
+!configs/credentials/**
+configs/tmux/plugins/
+```
+
+You can refine this list in your repo if your workflow needs different rules.
+
 ### 3. Generate a suggested manifest (recommended)
 
 Scan common config paths (asks for confirmation first):
@@ -153,7 +177,7 @@ dotctl manifest suggest
 Then:
 
 1. Review `manifest.suggested.yaml`.
-2. Copy the selected local config files/directories into your repo under the suggested `source` paths.
+2. Confirm the detected files were copied into your repo under the suggested `source` paths.
 3. Merge selected entries into `manifest.yaml`.
 4. Commit and push those changes.
 
@@ -224,6 +248,7 @@ Notes:
 - If both machines should use identical rules, keep the same `--profile`.
 - If a machine needs different rules, use another profile and `when.profile` entries in `manifest.yaml`.
 - `dotctl manifest suggest` is mainly for bootstrapping a new manifest, not required when reusing an existing one.
+- If you use `dotctl secrets`, copy `~/.config/dotctl/age-identity.txt` to machine B and run `dotctl secrets init --import <path>`.
 
 ## Daily commands
 
@@ -244,6 +269,11 @@ Notes:
 | `dotctl repos add --name work --url ...` | Add another repo |
 | `dotctl repos use work` | Switch active repo |
 | `dotctl manifest suggest` | Scan common paths and write `manifest.suggested.yaml` |
+| `dotctl secrets init` | Generate or import age encryption keys |
+| `dotctl secrets encrypt <file>` | Encrypt a file for safe repo storage |
+| `dotctl secrets decrypt <file>` | Decrypt a file (or `--stdout` to inspect) |
+| `dotctl secrets status` | Show secrets protection status |
+| `dotctl secrets rotate` | Rotate keys and re-encrypt all files |
 
 Useful global flags:
 
@@ -260,9 +290,13 @@ Useful global flags:
 
 - default output: `<active-repo>/manifest.suggested.yaml`
 - before scanning, dotctl asks for explicit confirmation (`[y/N]`)
+- by default, it also copies detected local config files/directories into repo `source` paths
+- on `dotctl sync`, if a `manifest.yaml` `source` is missing in the repo but its local `target` exists, dotctl backfills the repo source from that local target
+- on later `dotctl sync`, sources previously managed by this flow are pruned from the repo if their `source` entries were removed from `manifest.yaml`
 - use `--force` to skip confirmation (useful for automation)
 - use `--dry-run` to preview without writing files
 - use `--output <path>` to customize output file location
+- use `--no-copy-sources` to only generate the suggestion without copying files
 
 Current scan candidates include:
 
@@ -285,6 +319,9 @@ dotctl manifest suggest --force
 
 # preview only
 dotctl manifest suggest --dry-run --force
+
+# generate suggestion only (no source copy)
+dotctl manifest suggest --no-copy-sources --force
 
 # custom output filename/path
 dotctl manifest suggest --output manifest.suggested.work.yaml --force
@@ -408,6 +445,46 @@ files:
     decrypt: true
 ```
 
+## Secrets management (`dotctl secrets`)
+
+`dotctl secrets` provides built-in key generation, encryption, and rotation using [age](https://github.com/FiloSottile/age) (X25519 + ChaCha20-Poly1305).
+
+### Setup
+
+```bash
+# Generate an age key pair
+dotctl secrets init
+
+# Encrypt a sensitive file
+dotctl secrets encrypt configs/env/.env
+
+# Add to manifest with decrypt: true
+```
+
+### Multi-machine
+
+Copy `~/.config/dotctl/age-identity.txt` to each machine, then import:
+
+```bash
+dotctl secrets init --import ~/path/to/age-identity.txt
+dotctl sync
+```
+
+### Other operations
+
+```bash
+# Inspect encrypted file without writing to disk
+dotctl secrets decrypt configs/env/.env.enc --stdout
+
+# Check what is protected and what is not
+dotctl secrets status
+
+# Rotate keys and re-encrypt everything
+dotctl secrets rotate
+```
+
+`dotctl push` will block if unencrypted sensitive files (`.env`, `*.key`, etc.) are tracked. Use `--force` to override, or encrypt first.
+
 ## Paths used by dotctl
 
 Defaults (when XDG vars are not set):
@@ -415,6 +492,7 @@ Defaults (when XDG vars are not set):
 - Config file: `~/.config/dotctl/config.yaml`
 - Cloned default repo: `~/.config/dotctl/repo`
 - Backups: `~/.config/dotctl/backups`
+- Age identity (secrets): `~/.config/dotctl/age-identity.txt`
 - Logs:
   - Linux: `~/.local/state/dotctl/dotctl.log`
   - macOS: `~/.config/dotctl/dotctl.log`
