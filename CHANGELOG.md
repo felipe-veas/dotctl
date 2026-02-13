@@ -4,19 +4,16 @@
 
 ## [1.11.0](https://github.com/felipe-veas/dotctl/compare/v1.10.0...v1.11.0) (2026-02-13)
 
-
 ### Features
 
 * backup sessions and pruning logic fixes ([9846852](https://github.com/felipe-veas/dotctl/commit/9846852daf9fe77d34333d46637d6c39ed331a46))
 * **backup:** group backups into single session snapshots ([c06858c](https://github.com/felipe-veas/dotctl/commit/c06858c5508129b63ebcce8e995df1039adc3b94))
-
 
 ### Bug Fixes
 
 * **sources:** prevent pruning of parent/child managed sources ([019f655](https://github.com/felipe-veas/dotctl/commit/019f655b4306d2eb9d800935f520a901fdabdac8))
 
 ## [1.10.0](https://github.com/felipe-veas/dotctl/compare/v1.9.0...v1.10.0) (2026-02-13)
-
 
 ### Features
 

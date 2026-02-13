@@ -103,27 +103,9 @@ Historical planning archive:
 
 ## Quickstart
 
-Recommended onboarding for most users: initialize dotctl, run the config scan, review the suggested manifest, then sync.
+Recommended onboarding: initialize first, generate suggested manifest second, refine it, then sync.
 
-### 1. Prepare your private dotfiles repo
-
-Create a private repository to store your dotfiles.
-
-- If this is a new setup, the repo can start empty.
-- If you already have dotfiles managed, keep your existing `manifest.yaml` and `configs/` layout.
-
-Typical structure after setup:
-
-```text
-dotfiles/
-  manifest.yaml
-  configs/
-    zsh/.zshrc
-    git/.gitconfig
-    nvim/
-```
-
-### 2. Initialize dotctl on a machine
+### 1. Initialize dotctl on the machine
 
 Using SSH URL:
 
@@ -142,6 +124,24 @@ You can also set a custom clone location:
 ```bash
 dotctl init --repo <repo-url> --profile laptop --path /custom/path
 ```
+
+This step clones your dotfiles repository automatically. The repository can be empty for a first-time setup.
+
+If the remote repository started empty, commit and push your initial content from the local clone after generating your manifest/files:
+
+```bash
+git -C ~/.config/dotctl/repo add .
+git -C ~/.config/dotctl/repo commit -m "chore: bootstrap dotfiles manifest and config files"
+git -C ~/.config/dotctl/repo push -u origin main
+```
+
+You can also use:
+
+```bash
+dotctl push -m "chore: bootstrap dotfiles manifest and config files"
+```
+
+to stage/commit/push from the active dotctl repository.
 
 During init, dotctl also ensures recommended default ignore patterns in repo `.gitignore`:
 
@@ -166,7 +166,7 @@ configs/tmux/plugins/
 
 You can refine this list in your repo if your workflow needs different rules.
 
-### 3. Generate a suggested manifest (recommended)
+### 2. Generate a suggested manifest
 
 Scan common config paths (asks for confirmation first):
 
@@ -174,12 +174,29 @@ Scan common config paths (asks for confirmation first):
 dotctl manifest suggest
 ```
 
-Then:
+### 3. Turn the suggested manifest into a production manifest
+
+After running `dotctl manifest suggest`, use this workflow:
 
 1. Review `manifest.suggested.yaml`.
-2. Confirm the detected files were copied into your repo under the suggested `source` paths.
-3. Merge selected entries into `manifest.yaml`.
-4. Commit and push those changes.
+1. Keep only files you want to manage across machines.
+1. Add `when.profile` and `when.os` filters where behavior should differ by machine/OS.
+1. Use `mode: copy` only when symlink is not appropriate.
+1. Use `decrypt: true` for sensitive files and keep encrypted sources as `.enc.*`.
+1. Confirm detected files exist in the repo under the suggested `source` paths.
+1. Merge selected entries into `manifest.yaml`.
+1. Commit and push those changes.
+
+Typical repository structure after this step:
+
+```text
+dotfiles/
+  manifest.yaml
+  configs/
+    zsh/.zshrc
+    git/.gitconfig
+    nvim/
+```
 
 ### 4. Manual manifest path (optional)
 
