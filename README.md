@@ -154,7 +154,7 @@ dotctl manifest suggest
 Then:
 
 1. Review `manifest.suggested.yaml`.
-2. Copy the selected local config files/directories into your repo under the suggested `source` paths.
+2. Confirm the detected files were copied into your repo under the suggested `source` paths.
 3. Merge selected entries into `manifest.yaml`.
 4. Commit and push those changes.
 
@@ -267,9 +267,11 @@ Useful global flags:
 
 - default output: `<active-repo>/manifest.suggested.yaml`
 - before scanning, dotctl asks for explicit confirmation (`[y/N]`)
+- by default, it also copies detected local config files/directories into repo `source` paths
 - use `--force` to skip confirmation (useful for automation)
 - use `--dry-run` to preview without writing files
 - use `--output <path>` to customize output file location
+- use `--no-copy-sources` to only generate the suggestion without copying files
 
 Current scan candidates include:
 
@@ -292,6 +294,9 @@ dotctl manifest suggest --force
 
 # preview only
 dotctl manifest suggest --dry-run --force
+
+# generate suggestion only (no source copy)
+dotctl manifest suggest --no-copy-sources --force
 
 # custom output filename/path
 dotctl manifest suggest --output manifest.suggested.work.yaml --force
