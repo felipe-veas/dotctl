@@ -1,6 +1,6 @@
-# 2026 Inception Archive
+# 2026 Foundation Archive
 
-This folder contains the initial planning set created at project inception.
+This folder contains the consolidated early planning and implementation documents created during the first project phase.
 
 Status:
 
@@ -20,3 +20,4 @@ Status:
 - [V1 Delivery Milestones](./v1-delivery-milestones.md)
 - [V1 Risks and Assumptions](./v1-risks-and-assumptions.md)
 - [V1 Acceptance Criteria](./v1-acceptance-criteria.md)
+- [V1 Secrets MVP Implementation Plan](./v1-secrets-mvp-implementation-plan.md)
