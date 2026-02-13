@@ -2,6 +2,15 @@
 
 <!-- markdownlint-disable MD024 -->
 
+## [1.7.0](https://github.com/felipe-veas/dotctl/compare/v1.6.0...v1.7.0) (2026-02-13)
+
+
+### Features
+
+* add manifest suggest command and update documentation ([7337348](https://github.com/felipe-veas/dotctl/commit/7337348f4d8beb46871b111f2895b37d5634ff4d))
+* **cmd:** add manifest suggest command ([b05a6ad](https://github.com/felipe-veas/dotctl/commit/b05a6ad6f6cf5a0993269fd296b03dd17b9d14ee))
+* **gitops:** use local git identity for push ([46c4f87](https://github.com/felipe-veas/dotctl/commit/46c4f873657c1a886be36b60519a52ecbfba3c50))
+
 ## [1.6.0](https://github.com/felipe-veas/dotctl/compare/v1.5.0...v1.6.0) (2026-02-13)
 
 ### Features
