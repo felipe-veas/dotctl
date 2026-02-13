@@ -228,7 +228,12 @@ func doDecryptCopy(action manifest.Action, sourcePath string, srcInfo fs.FileInf
 		}
 	}
 
-	if err := os.WriteFile(action.Target, plaintext, srcInfo.Mode().Perm()); err != nil {
+	// Decrypted files should never be world-readable.
+	perm := srcInfo.Mode().Perm()
+	if perm > 0o600 {
+		perm = 0o600
+	}
+	if err := os.WriteFile(action.Target, plaintext, perm); err != nil {
 		return Result{
 			Action:     action,
 			Status:     "error",

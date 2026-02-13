@@ -19,6 +19,11 @@ func TestIsSensitiveTrackedPath(t *testing.T) {
 		{path: "files/.ssh/id_ed25519", want: true},
 		{path: "configs/zsh/.zshrc", want: false},
 		{path: "README.md", want: false},
+		// Encrypted files should not be flagged as sensitive.
+		{path: "configs/app/config.enc.yaml", want: false},
+		{path: ".env.enc", want: false},
+		{path: "api.enc.key", want: false},
+		{path: "secret.enc", want: false},
 	}
 
 	for _, tc := range tests {
