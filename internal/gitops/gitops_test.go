@@ -129,6 +129,48 @@ func TestPullRebaseDirty(t *testing.T) {
 	}
 }
 
+func TestPullRebaseAllowsDirtyGitignore(t *testing.T) {
+	requireGit(t)
+
+	remote := setupRemoteRepo(t)
+	client := filepath.Join(t.TempDir(), "client")
+	writer := filepath.Join(t.TempDir(), "writer")
+
+	gitCmd(t, "", "clone", remote, client)
+	gitCmd(t, "", "clone", remote, writer)
+
+	if err := os.WriteFile(filepath.Join(client, ".gitignore"), []byte("configs/tmux/plugins/\n"), 0o644); err != nil {
+		t.Fatalf("write local .gitignore: %v", err)
+	}
+
+	if err := os.WriteFile(filepath.Join(writer, "README.md"), []byte("updated\n"), 0o644); err != nil {
+		t.Fatalf("write updated file: %v", err)
+	}
+	gitCmd(t, writer, "add", "README.md")
+	gitCmd(t, writer, "-c", "user.name=test", "-c", "user.email=test@example.com", "commit", "-m", "update")
+	gitCmd(t, writer, "push", "origin", "HEAD")
+
+	if _, err := PullRebase(client); err != nil {
+		t.Fatalf("PullRebase: %v", err)
+	}
+
+	data, err := os.ReadFile(filepath.Join(client, "README.md"))
+	if err != nil {
+		t.Fatalf("read pulled file: %v", err)
+	}
+	if strings.TrimSpace(string(data)) != "updated" {
+		t.Fatalf("unexpected pulled content: %q", string(data))
+	}
+
+	gitignore, err := os.ReadFile(filepath.Join(client, ".gitignore"))
+	if err != nil {
+		t.Fatalf("read local .gitignore: %v", err)
+	}
+	if strings.TrimSpace(string(gitignore)) != "configs/tmux/plugins/" {
+		t.Fatalf("local .gitignore content changed unexpectedly: %q", strings.TrimSpace(string(gitignore)))
+	}
+}
+
 func TestPush(t *testing.T) {
 	requireGit(t)
 

@@ -259,17 +259,47 @@ func PullRebase(path string) (string, error) {
 	if err != nil {
 		return "", err
 	}
+	pullArgs := []string{"pull", "--rebase"}
 	if dirty {
-		return "", fmt.Errorf("%w: commit or stash your local changes before pulling", ErrRepoDirty)
+		onlyGitignore, err := isOnlyPathDirty(path, ".gitignore")
+		if err != nil {
+			return "", err
+		}
+		if !onlyGitignore {
+			return "", fmt.Errorf("%w: commit or stash your local changes before pulling", ErrRepoDirty)
+		}
+		pullArgs = append(pullArgs, "--autostash")
 	}
 
-	out, err := runGitCommand(path, "pull", "--rebase")
+	out, err := runGitCommand(path, pullArgs...)
 	if err != nil {
 		wrapped := fmt.Errorf("pulling latest changes: %w", err)
 		return "", withPullHint(wrapped)
 	}
 
 	return out, nil
+}
+
+func isOnlyPathDirty(path, relativePath string) (bool, error) {
+	statusAll, err := runGitCommand(path, "status", "--porcelain")
+	if err != nil {
+		return false, fmt.Errorf("checking repo status: %w", err)
+	}
+	statusAll = strings.TrimSpace(statusAll)
+	if statusAll == "" {
+		return false, nil
+	}
+
+	statusPath, err := runGitCommand(path, "status", "--porcelain", "--", relativePath)
+	if err != nil {
+		return false, fmt.Errorf("checking repo status for %s: %w", relativePath, err)
+	}
+	statusPath = strings.TrimSpace(statusPath)
+	if statusPath == "" {
+		return false, nil
+	}
+
+	return statusAll == statusPath, nil
 }
 
 // IsDirty reports whether the repository has uncommitted changes.
