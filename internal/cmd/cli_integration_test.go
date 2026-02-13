@@ -50,6 +50,14 @@ func TestCLIInitIntegration(t *testing.T) {
 	if cfg.Repo.Path != env.clonePath {
 		t.Fatalf("repo.path = %q, want %q", cfg.Repo.Path, env.clonePath)
 	}
+
+	gitignoreData, err := os.ReadFile(filepath.Join(env.clonePath, ".gitignore"))
+	if err != nil {
+		t.Fatalf("read generated .gitignore: %v", err)
+	}
+	if !strings.Contains(string(gitignoreData), "configs/tmux/plugins/") {
+		t.Fatalf(".gitignore missing default tmux plugin ignore pattern: %s", string(gitignoreData))
+	}
 }
 
 func TestCLIPullIntegration(t *testing.T) {

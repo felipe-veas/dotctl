@@ -143,6 +143,29 @@ You can also set a custom clone location:
 dotctl init --repo <repo-url> --profile laptop --path /custom/path
 ```
 
+During init, dotctl also ensures recommended default ignore patterns in repo `.gitignore`:
+
+```gitignore
+.DS_Store
+Thumbs.db
+.env
+.env.*
+*.pem
+*.key
+*.p12
+*.pfx
+*.token
+*credentials*
+*secret*
+!configs/secrets/
+!configs/secrets/**
+!configs/credentials/
+!configs/credentials/**
+configs/tmux/plugins/
+```
+
+You can refine this list in your repo if your workflow needs different rules.
+
 ### 3. Generate a suggested manifest (recommended)
 
 Scan common config paths (asks for confirmation first):
