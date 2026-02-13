@@ -492,6 +492,7 @@ Defaults (when XDG vars are not set):
 - Config file: `~/.config/dotctl/config.yaml`
 - Cloned default repo: `~/.config/dotctl/repo`
 - Backups: `~/.config/dotctl/backups`
+  - Snapshot layout: `~/.config/dotctl/backups/<timestamp>/targets/<target-path>`
 - Age identity (secrets): `~/.config/dotctl/age-identity.txt`
 - Logs:
   - Linux: `~/.local/state/dotctl/dotctl.log`

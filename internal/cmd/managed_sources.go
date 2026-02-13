@@ -83,12 +83,14 @@ func pruneManagedSources(repoPath string, manifestFiles []manifest.FileEntry, dr
 	}
 
 	active := make(map[string]bool, len(manifestFiles))
+	activeSources := make([]string, 0, len(manifestFiles))
 	for _, file := range manifestFiles {
 		source, ok := normalizeManagedSource(file.Source)
 		if !ok {
 			continue
 		}
 		active[source] = true
+		activeSources = append(activeSources, source)
 	}
 
 	results := make([]sourcePruneResult, 0)
@@ -96,7 +98,7 @@ func pruneManagedSources(repoPath string, manifestFiles []manifest.FileEntry, dr
 	errorCount := 0
 
 	for _, source := range managedSources {
-		if active[source] {
+		if isManagedSourceStillActive(source, active, activeSources) {
 			nextManaged = append(nextManaged, source)
 			continue
 		}
@@ -159,6 +161,30 @@ func pruneManagedSources(repoPath string, manifestFiles []manifest.FileEntry, dr
 	}
 
 	return results, nil
+}
+
+func isManagedSourceStillActive(source string, active map[string]bool, activeSources []string) bool {
+	if active[source] {
+		return true
+	}
+
+	for _, current := range activeSources {
+		// Keep the source when either:
+		// - source is a parent of an active entry (e.g. configs/tmux vs configs/tmux/tmux.conf)
+		// - source is a child of an active entry (e.g. configs/tmux/tmux.conf vs configs/tmux)
+		if hasManagedSourcePrefix(current, source) || hasManagedSourcePrefix(source, current) {
+			return true
+		}
+	}
+
+	return false
+}
+
+func hasManagedSourcePrefix(path, prefix string) bool {
+	if path == prefix {
+		return true
+	}
+	return strings.HasPrefix(path, prefix+"/")
 }
 
 func backfillMissingSourcesFromTargets(repoPath string, actions []manifest.Action, dryRun bool) ([]sourceBackfillResult, error) {

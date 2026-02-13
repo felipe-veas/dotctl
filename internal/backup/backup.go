@@ -7,10 +7,32 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strings"
+	"sync"
 	"time"
 
 	"github.com/felipe-veas/dotctl/internal/platform"
 )
+
+var (
+	sessionMu       sync.Mutex
+	sessionSnapshot string
+)
+
+// BeginSession sets a shared backup snapshot for subsequent Create calls.
+// The returned function restores the previous session snapshot.
+func BeginSession() func() {
+	sessionMu.Lock()
+	prev := sessionSnapshot
+	sessionSnapshot = newSnapshotName()
+	sessionMu.Unlock()
+
+	return func() {
+		sessionMu.Lock()
+		sessionSnapshot = prev
+		sessionMu.Unlock()
+	}
+}
 
 // Create backs up a file or directory to the backup directory.
 // Returns the path where the backup was stored.
@@ -20,13 +42,14 @@ func Create(targetPath string) (string, error) {
 		return "", fmt.Errorf("stat %q: %w", targetPath, err)
 	}
 
-	timestamp := time.Now().Format("20060102-150405.000000")
-	backupBase := filepath.Join(platform.BackupDir(), timestamp)
+	backupBase := filepath.Join(platform.BackupDir(), currentSnapshotName())
 
-	// Use the base name of the target for the backup
-	backupPath := filepath.Join(backupBase, filepath.Base(targetPath))
+	backupPath, err := buildBackupPath(backupBase, targetPath)
+	if err != nil {
+		return "", err
+	}
 
-	if err := os.MkdirAll(backupBase, 0o755); err != nil {
+	if err := os.MkdirAll(filepath.Dir(backupPath), 0o755); err != nil {
 		return "", fmt.Errorf("creating backup dir: %w", err)
 	}
 
@@ -54,6 +77,65 @@ func Create(targetPath string) (string, error) {
 	}
 
 	return backupPath, nil
+}
+
+func currentSnapshotName() string {
+	sessionMu.Lock()
+	defer sessionMu.Unlock()
+	if sessionSnapshot != "" {
+		return sessionSnapshot
+	}
+	return newSnapshotName()
+}
+
+func newSnapshotName() string {
+	return time.Now().Format("20060102-150405.000000")
+}
+
+func buildBackupPath(backupBase, targetPath string) (string, error) {
+	relative := targetRelativePath(targetPath)
+	basePath := filepath.Join(backupBase, "targets", relative)
+	return uniqueBackupPath(basePath)
+}
+
+func uniqueBackupPath(basePath string) (string, error) {
+	candidate := basePath
+	for i := 1; ; i++ {
+		_, err := os.Lstat(candidate)
+		if os.IsNotExist(err) {
+			return candidate, nil
+		}
+		if err != nil {
+			return "", fmt.Errorf("checking backup path %q: %w", candidate, err)
+		}
+		candidate = fmt.Sprintf("%s~%d", basePath, i)
+	}
+}
+
+func targetRelativePath(targetPath string) string {
+	cleaned := filepath.Clean(targetPath)
+	if vol := filepath.VolumeName(cleaned); vol != "" {
+		cleaned = strings.TrimPrefix(cleaned, vol)
+	}
+	cleaned = strings.TrimPrefix(cleaned, string(filepath.Separator))
+
+	parts := strings.Split(cleaned, string(filepath.Separator))
+	safeParts := make([]string, 0, len(parts))
+	for _, part := range parts {
+		switch part {
+		case "", ".":
+			continue
+		case "..":
+			safeParts = append(safeParts, "__parent__")
+		default:
+			safeParts = append(safeParts, part)
+		}
+	}
+
+	if len(safeParts) == 0 {
+		return "root"
+	}
+	return filepath.Join(safeParts...)
 }
 
 // RotationResult summarizes backup rotation actions.

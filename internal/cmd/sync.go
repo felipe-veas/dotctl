@@ -51,6 +51,12 @@ func runSync(cmd *cobra.Command, args []string) (err error) {
 		logging.Debug("sync lock released", "path", syncLock.Path())
 	}()
 
+	endBackupSession := func() {}
+	if !flagDryRun {
+		endBackupSession = backup.BeginSession()
+	}
+	defer endBackupSession()
+
 	pullOutput := ""
 	if !flagDryRun {
 		pullOutput, err = gitops.PullRebase(cfg.Repo.Path)
