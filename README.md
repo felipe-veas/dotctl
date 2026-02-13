@@ -3,6 +3,7 @@
 `dotctl` is a CLI (plus optional tray apps) to sync dotfiles across machines using a private GitHub repository as the source of truth.
 
 It is designed for:
+
 - profile-aware dotfiles (`laptop`, `workstation`, `server`, etc.)
 - safe sync with backups and rollback
 - reproducible setup via `manifest.yaml`
@@ -12,10 +13,12 @@ It is designed for:
 - Declarative sync from `manifest.yaml`
 - `symlink` and `copy` file modes
 - Optional encrypted file deployment (`decrypt: true` with `sops` or `age`)
+- Suggested manifest generation from common local config paths (`dotctl manifest suggest`)
 - Pre/post sync hooks plus bootstrap hooks
 - Multi-repo support (`dotctl repos ...`)
 - Health checks (`dotctl doctor`)
 - JSON output mode for scripting (`--json`)
+- Commit/push using your Git identity and signing settings
 - Optional tray apps:
   - macOS status bar app
   - Linux system tray app
@@ -80,6 +83,23 @@ make build
 ./bin/dotctl version
 ```
 
+## Documentation
+
+Current documentation:
+
+- [Getting Started](./docs/getting-started.md)
+- [Installation](./docs/installation.md)
+- [Manifest Specification](./docs/manifest-spec.md)
+- [Command Reference](./docs/command-reference.md)
+- [Sync Lifecycle](./docs/sync-lifecycle.md)
+- [Security Model](./docs/security-model.md)
+- [Troubleshooting](./docs/troubleshooting.md)
+- [Roadmap](./docs/roadmap.md)
+
+Historical planning archive:
+
+- [Archive index](./docs/archive/README.md)
+
 ## Quickstart
 
 ### 1. Prepare your private dotfiles repo
@@ -137,6 +157,12 @@ You can also set a custom clone location:
 dotctl init --repo <repo-url> --profile laptop --path /custom/path
 ```
 
+Generate a suggested manifest by scanning common config paths (asks for confirmation first):
+
+```bash
+dotctl manifest suggest
+```
+
 ### 4. Validate and sync
 
 ```bash
@@ -146,6 +172,7 @@ dotctl status
 ```
 
 `dotctl sync` flow is:
+
 1. `git pull --rebase`
 2. apply manifest actions
 3. run hooks
@@ -169,14 +196,60 @@ dotctl status
 | `dotctl repos list` | List configured repos |
 | `dotctl repos add --name work --url ...` | Add another repo |
 | `dotctl repos use work` | Switch active repo |
+| `dotctl manifest suggest` | Scan common paths and write `manifest.suggested.yaml` |
 
 Useful global flags:
+
 - `--dry-run`: show planned actions only
 - `--json`: machine-readable output
 - `--verbose`: enable detailed logs + git tracing
 - `--config <path>`: use a specific config file
 - `--profile <name>`: override active profile for this run
 - `--repo-name <name>`: pick active repo for this run
+
+## Suggested manifest scan (`dotctl manifest suggest`)
+
+`dotctl manifest suggest` scans common configuration paths from your machine and writes a reviewable draft file:
+
+- default output: `<active-repo>/manifest.suggested.yaml`
+- before scanning, dotctl asks for explicit confirmation (`[y/N]`)
+- use `--force` to skip confirmation (useful for automation)
+- use `--dry-run` to preview without writing files
+- use `--output <path>` to customize output file location
+
+Example flow:
+
+```bash
+dotctl manifest suggest
+# review manifest.suggested.yaml
+# merge selected entries into manifest.yaml
+```
+
+JSON mode note:
+
+- `dotctl manifest suggest --json` requires `--force` because confirmation is interactive
+
+Security note:
+
+- the scan skips sensitive candidates such as `.env`, SSH key paths, and key/cert suffix patterns
+
+## Commit identity for `dotctl push`
+
+`dotctl push` uses your Git configuration for author/signing instead of forcing a `dotctl` author.
+
+Recommended setup:
+
+```bash
+git config --global user.name "Your Name"
+git config --global user.email "you@example.com"
+```
+
+Or per-repository:
+
+```bash
+git -C /path/to/repo config user.name "Your Name"
+git -C /path/to/repo config user.email "you@example.com"
+```
 
 ## Multi-repo workflow
 
@@ -202,6 +275,7 @@ dotctl sync
 ## Manifest reference
 
 Top-level keys:
+
 - `version`: currently `1`
 - `vars`: custom variables used in templated targets
 - `files`: list of managed entries
@@ -209,6 +283,7 @@ Top-level keys:
 - `hooks`: `pre_sync`, `post_sync`, `bootstrap`
 
 Per-file fields:
+
 - `source` (required): path relative to repo root
 - `target` (required): absolute path or template
 - `mode`: `symlink` (default) or `copy`
@@ -218,6 +293,7 @@ Per-file fields:
 - `backup`: `true` (default) or `false`
 
 Available template vars in `target`:
+
 - `home`
 - `os`
 - `arch`
@@ -230,6 +306,7 @@ Available template vars in `target`:
 Hook commands run with `/bin/sh -c` from the repo directory.
 
 Environment variables exposed to hooks:
+
 - `DOTCTL_HOOK_PHASE`
 - `DOTCTL_HOOK_REPO`
 
@@ -250,6 +327,7 @@ hooks:
 ## Encrypted files (`decrypt: true`)
 
 For encrypted sources in the repo:
+
 - use `mode: copy`
 - set `decrypt: true`
 - ensure source filename includes `.enc.` (for validation)
@@ -268,6 +346,7 @@ files:
 ## Paths used by dotctl
 
 Defaults (when XDG vars are not set):
+
 - Config file: `~/.config/dotctl/config.yaml`
 - Cloned default repo: `~/.config/dotctl/repo`
 - Backups: `~/.config/dotctl/backups`
@@ -286,6 +365,7 @@ Defaults (when XDG vars are not set):
 - `dotctl not initialized`: run `dotctl init --repo <url> --profile <name>`
 - `gh not authenticated`: run `gh auth login --web`
 - `repository has uncommitted changes`: commit/stash inside dotctl repo, then run `dotctl sync` again
+- `configure git identity (user.name and user.email)`: set Git identity in repo or globally, then retry `dotctl push`
 - decrypt tool errors: install `sops` or `age` and confirm it is in PATH
 - inspect detailed logs with `--verbose` and the log file path above
 
