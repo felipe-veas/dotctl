@@ -3,15 +3,15 @@ module github.com/felipe-veas/dotctl
 go 1.25.0
 
 require (
+	filippo.io/age v1.3.1
 	github.com/fsnotify/fsnotify v1.9.0
 	github.com/getlantern/systray v1.2.2
 	github.com/spf13/cobra v1.10.2
-	golang.org/x/sys v0.38.0
+	golang.org/x/sys v0.41.0
 	gopkg.in/yaml.v3 v3.0.1
 )
 
 require (
-	filippo.io/age v1.3.1 // indirect
 	filippo.io/hpke v0.4.0 // indirect
 	github.com/getlantern/context v0.0.0-20190109183933-c447772a6520 // indirect
 	github.com/getlantern/errors v0.0.0-20190325191628-abdb3e3e36f7 // indirect
