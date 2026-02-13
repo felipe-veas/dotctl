@@ -2,6 +2,13 @@
 
 <!-- markdownlint-disable MD024 -->
 
+## [1.7.1](https://github.com/felipe-veas/dotctl/compare/v1.7.0...v1.7.1) (2026-02-13)
+
+
+### Bug Fixes
+
+* **aur:** address shellcheck warnings and improve error handling ([c4fcc62](https://github.com/felipe-veas/dotctl/commit/c4fcc62c7fa5a43a2b929b0fa924b603bcd88f4f))
+
 ## [1.7.0](https://github.com/felipe-veas/dotctl/compare/v1.6.0...v1.7.0) (2026-02-13)
 
 ### Features
