@@ -71,6 +71,20 @@ func runSync(cmd *cobra.Command, args []string) (err error) {
 	if err != nil {
 		return err
 	}
+	backfillResults, err := backfillMissingSourcesFromTargets(cfg.Repo.Path, state.Actions, flagDryRun)
+	if err != nil {
+		return err
+	}
+	if !out.IsJSON() {
+		reportManagedSourceBackfill(out, backfillResults, flagDryRun)
+	}
+	pruneResults, err := pruneManagedSources(cfg.Repo.Path, state.Manifest.Files, flagDryRun)
+	if err != nil {
+		return err
+	}
+	if !out.IsJSON() {
+		reportManagedSourcePrune(out, pruneResults, flagDryRun)
+	}
 
 	if decryptTool, decryptCount, decryptErr := detectDecryptToolForActions(state.Actions); decryptCount > 0 {
 		if decryptErr != nil {
@@ -274,6 +288,65 @@ func persistLastSync(cfgPath string, cfg *config.Config) error {
 		return fmt.Errorf("saving last sync timestamp: %w", err)
 	}
 	return nil
+}
+
+func reportManagedSourcePrune(out *output.Printer, results []sourcePruneResult, dryRun bool) {
+	if len(results) == 0 {
+		return
+	}
+
+	removed := 0
+	missing := 0
+
+	for _, result := range results {
+		switch result.Status {
+		case "removed":
+			removed++
+			out.Info("Pruned stale repo source: %s", result.Source)
+		case "would_remove":
+			removed++
+			out.Info("Would prune stale repo source: %s", result.Source)
+		case "missing":
+			missing++
+		}
+	}
+
+	if removed == 0 && missing == 0 {
+		return
+	}
+
+	if dryRun {
+		out.Info("Managed source prune dry run: %d would remove, %d already missing", removed, missing)
+		return
+	}
+	out.Info("Managed source prune summary: %d removed, %d already missing", removed, missing)
+}
+
+func reportManagedSourceBackfill(out *output.Printer, results []sourceBackfillResult, dryRun bool) {
+	if len(results) == 0 {
+		return
+	}
+
+	copied := 0
+	for _, result := range results {
+		switch result.Status {
+		case "copied_from_target":
+			copied++
+			out.Info("Backfilled missing repo source %s from %s", result.Source, result.Target)
+		case "would_copy_from_target":
+			copied++
+			out.Info("Would backfill missing repo source %s from %s", result.Source, result.Target)
+		}
+	}
+
+	if copied == 0 {
+		return
+	}
+	if dryRun {
+		out.Info("Managed source backfill dry run: %d would copy", copied)
+		return
+	}
+	out.Info("Managed source backfill summary: %d copied", copied)
 }
 
 type syncResultJSON struct {

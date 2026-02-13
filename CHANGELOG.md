@@ -2,6 +2,30 @@
 
 <!-- markdownlint-disable MD024 -->
 
+## [1.10.0](https://github.com/felipe-veas/dotctl/compare/v1.9.0...v1.10.0) (2026-02-13)
+
+
+### Features
+
+* **gitops:** allow pull rebase with dirty gitignore ([0f4cd2b](https://github.com/felipe-veas/dotctl/commit/0f4cd2bd948de73d9fe8f458f81b60e92dfdd589))
+* **init:** ensure recommended default gitignore patterns ([16b3b37](https://github.com/felipe-veas/dotctl/commit/16b3b379fe4c7fe55ddd063f4c6eacaf33992bbe))
+* managed sources backfill and gitignore init ([cbf751c](https://github.com/felipe-veas/dotctl/commit/cbf751ce60a9e20662fcbda17b3ae85de4fb660e))
+* **sync:** add managed source backfill and prune logic ([3c7d9f1](https://github.com/felipe-veas/dotctl/commit/3c7d9f18053cac3faed1f2754641922f5cba44a8))
+
+## [1.9.0](https://github.com/felipe-veas/dotctl/compare/v1.8.0...v1.9.0) (2026-02-13)
+
+### Features
+
+* **manifest:** automatically copy suggested config files to repo ([a1ecdb6](https://github.com/felipe-veas/dotctl/commit/a1ecdb6d2d992bc848180f59e5ec60be03f7dd9e))
+* **manifest:** automatically copy suggested config files to repo ([209efe8](https://github.com/felipe-veas/dotctl/commit/209efe8001b30157aba7d80584a29516cd5161d9))
+
+## [1.8.0](https://github.com/felipe-veas/dotctl/compare/v1.7.1...v1.8.0) (2026-02-13)
+
+### Features
+
+* add secrets management with age encryption ([7ae1dd1](https://github.com/felipe-veas/dotctl/commit/7ae1dd1b69ca9978d172bb0efe0396b3c6afb9ad))
+* add secrets management with age encryption ([b81d3ce](https://github.com/felipe-veas/dotctl/commit/b81d3ceee04ce11ad43ee02c539a8f9784fd12f5))
+
 ## [1.7.1](https://github.com/felipe-veas/dotctl/compare/v1.7.0...v1.7.1) (2026-02-13)
 
 ### Bug Fixes

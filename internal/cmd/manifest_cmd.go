@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"os"
 	"path"
 	"path/filepath"
@@ -55,6 +56,7 @@ var homeSourceCategoryByBase = map[string]string{
 type manifestScanCandidate struct {
 	Relative string `json:"relative"`
 	Target   string `json:"target"`
+	absPath  string
 }
 
 type suggestedManifest struct {
@@ -66,6 +68,14 @@ type suggestedManifestFile struct {
 	Source string `yaml:"source"`
 	Target string `yaml:"target"`
 	Mode   string `yaml:"mode,omitempty"`
+}
+
+type sourceCopyResult struct {
+	Source    string `json:"source"`
+	LocalPath string `json:"local_path"`
+	RepoPath  string `json:"repo_path"`
+	Status    string `json:"status"`
+	Error     string `json:"error,omitempty"`
 }
 
 func newManifestCmd() *cobra.Command {
@@ -80,21 +90,23 @@ func newManifestCmd() *cobra.Command {
 
 func newManifestSuggestCmd() *cobra.Command {
 	var outputPath string
+	var noCopySources bool
 
 	cmd := &cobra.Command{
 		Use:   "suggest",
 		Short: "Scan common config paths and generate a suggested manifest",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return runManifestSuggest(outputPath)
+			return runManifestSuggest(outputPath, !noCopySources)
 		},
 	}
 
 	cmd.Flags().StringVar(&outputPath, "output", "", "output path for suggested manifest (default: <repo>/manifest.suggested.yaml)")
+	cmd.Flags().BoolVar(&noCopySources, "no-copy-sources", false, "do not copy detected local config sources into repo paths referenced by the suggested manifest")
 	return cmd
 }
 
-func runManifestSuggest(outputPath string) error {
+func runManifestSuggest(outputPath string, copySources bool) error {
 	out := output.New(flagJSON)
 
 	cfg, _, err := resolveConfig()
@@ -112,7 +124,7 @@ func runManifestSuggest(outputPath string) error {
 		if out.IsJSON() {
 			return fmt.Errorf("--json requires --force for manifest suggest (confirmation is interactive)")
 		}
-		confirmed, err := requestScanAuthorization(os.Stdin, os.Stdout, homeDir, configHome)
+		confirmed, err := requestScanAuthorization(os.Stdin, os.Stdout, homeDir, configHome, cfg.Repo.Path, copySources)
 		if err != nil {
 			return err
 		}
@@ -131,11 +143,12 @@ func runManifestSuggest(outputPath string) error {
 	if len(entries) == 0 {
 		if out.IsJSON() {
 			return out.JSON(map[string]any{
-				"status":             "no_suggestions",
-				"repo_path":          cfg.Repo.Path,
-				"scanned_candidates": len(defaultManifestScanCandidates),
-				"matched":            0,
-				"skipped_sensitive":  skippedSensitive,
+				"status":               "no_suggestions",
+				"repo_path":            cfg.Repo.Path,
+				"scanned_candidates":   len(defaultManifestScanCandidates),
+				"matched":              0,
+				"skipped_sensitive":    skippedSensitive,
+				"copy_sources_enabled": copySources,
 			})
 		}
 		out.Warn("No common config paths detected in %s or %s", homeDir, configHome)
@@ -163,16 +176,52 @@ func runManifestSuggest(outputPath string) error {
 		}
 	}
 
+	copyResults := make([]sourceCopyResult, 0)
+	if copySources {
+		results, copyErr := copySuggestedSources(cfg.Repo.Path, candidates, flagForce, flagDryRun)
+		copyResults = results
+		if copyErr != nil {
+			if out.IsJSON() {
+				return out.JSON(map[string]any{
+					"status":               "copy_error",
+					"dry_run":              flagDryRun,
+					"repo_path":            cfg.Repo.Path,
+					"output_path":          destination,
+					"scanned_candidates":   len(defaultManifestScanCandidates),
+					"matched":              len(entries),
+					"skipped_sensitive":    skippedSensitive,
+					"copy_sources_enabled": copySources,
+					"copied_sources":       copyResults,
+					"files":                entries,
+					"error":                copyErr.Error(),
+				})
+			}
+			return copyErr
+		}
+
+		if !flagDryRun {
+			managed := make([]string, 0, len(entries))
+			for _, entry := range entries {
+				managed = append(managed, entry.Source)
+			}
+			if err := writeManagedSources(cfg.Repo.Path, managed); err != nil {
+				return err
+			}
+		}
+	}
+
 	if out.IsJSON() {
 		return out.JSON(map[string]any{
-			"status":             "ok",
-			"dry_run":            flagDryRun,
-			"repo_path":          cfg.Repo.Path,
-			"output_path":        destination,
-			"scanned_candidates": len(defaultManifestScanCandidates),
-			"matched":            len(entries),
-			"skipped_sensitive":  skippedSensitive,
-			"files":              entries,
+			"status":               "ok",
+			"dry_run":              flagDryRun,
+			"repo_path":            cfg.Repo.Path,
+			"output_path":          destination,
+			"scanned_candidates":   len(defaultManifestScanCandidates),
+			"matched":              len(entries),
+			"skipped_sensitive":    skippedSensitive,
+			"copy_sources_enabled": copySources,
+			"copied_sources":       copyResults,
+			"files":                entries,
 		})
 	}
 
@@ -185,17 +234,27 @@ func runManifestSuggest(outputPath string) error {
 	if skippedSensitive > 0 {
 		out.Warn("Skipped %d sensitive candidate path(s)", skippedSensitive)
 	}
-	out.Info("Review %s and merge selected entries into manifest.yaml.", destination)
+	if copySources {
+		copied, overwritten, skipped, copyErrors := summarizeCopyResults(copyResults)
+		if flagDryRun {
+			out.Info("Source copy dry run: %d would copy, %d would overwrite, %d skipped", copied, overwritten, skipped)
+		} else {
+			out.Info("Source copy summary: %d copied, %d overwritten, %d skipped, %d errors", copied, overwritten, skipped, copyErrors)
+		}
+	} else {
+		out.Info("Source copy disabled by --no-copy-sources.")
+	}
+	out.Info("Review %s and merge entries into manifest.yaml.", destination)
 
 	return nil
 }
 
-func requestScanAuthorization(in io.Reader, out io.Writer, homeDir, configHome string) (bool, error) {
-	question := fmt.Sprintf(
-		"dotctl will scan common config paths under %s and %s to generate a suggested manifest. Continue? [y/N]: ",
-		homeDir,
-		configHome,
-	)
+func requestScanAuthorization(in io.Reader, out io.Writer, homeDir, configHome, repoPath string, copySources bool) (bool, error) {
+	action := "generate a suggested manifest"
+	if copySources {
+		action = fmt.Sprintf("generate a suggested manifest and copy detected sources into %s", repoPath)
+	}
+	question := fmt.Sprintf("dotctl will scan common config paths under %s and %s to %s. Continue? [y/N]: ", homeDir, configHome, action)
 	return promptYesNo(in, out, question)
 }
 
@@ -253,6 +312,7 @@ func discoverManifestCandidates(homeDir, configHome string, candidateRelPaths []
 		found = append(found, manifestScanCandidate{
 			Relative: filepath.ToSlash(trimmed),
 			Target:   target,
+			absPath:  abs,
 		})
 	}
 
@@ -342,6 +402,219 @@ func renderSuggestedManifest(files []suggestedManifestFile) ([]byte, error) {
 
 	header := "# generated by dotctl manifest suggest\n# review and merge entries into manifest.yaml\n"
 	return append([]byte(header), body...), nil
+}
+
+func copySuggestedSources(repoPath string, candidates []manifestScanCandidate, force, dryRun bool) ([]sourceCopyResult, error) {
+	// Keep one candidate per source path in manifest (dedupe by first occurrence).
+	bySource := make(map[string]manifestScanCandidate)
+	for _, candidate := range candidates {
+		source := suggestedSourcePath(candidate.Relative)
+		if source == "" {
+			continue
+		}
+		if _, exists := bySource[source]; !exists {
+			bySource[source] = candidate
+		}
+	}
+
+	sources := make([]string, 0, len(bySource))
+	for source := range bySource {
+		sources = append(sources, source)
+	}
+	sort.Strings(sources)
+
+	results := make([]sourceCopyResult, 0, len(sources))
+	errorCount := 0
+
+	for _, source := range sources {
+		candidate := bySource[source]
+		repoTarget := filepath.Join(repoPath, filepath.FromSlash(source))
+		result := sourceCopyResult{
+			Source:    source,
+			LocalPath: candidate.absPath,
+			RepoPath:  repoTarget,
+		}
+
+		exists, existsErr := pathExists(repoTarget)
+		if existsErr != nil {
+			result.Status = "error"
+			result.Error = existsErr.Error()
+			errorCount++
+			results = append(results, result)
+			continue
+		}
+
+		if exists && !force {
+			result.Status = "skipped_exists"
+			results = append(results, result)
+			continue
+		}
+
+		if dryRun {
+			if exists {
+				result.Status = "would_overwrite"
+			} else {
+				result.Status = "would_copy"
+			}
+			results = append(results, result)
+			continue
+		}
+
+		if exists {
+			if err := os.RemoveAll(repoTarget); err != nil {
+				result.Status = "error"
+				result.Error = fmt.Sprintf("removing existing path %s: %v", repoTarget, err)
+				errorCount++
+				results = append(results, result)
+				continue
+			}
+		}
+
+		if err := copyPathRecursive(candidate.absPath, repoTarget); err != nil {
+			result.Status = "error"
+			result.Error = fmt.Sprintf("copying %s to %s: %v", candidate.absPath, repoTarget, err)
+			errorCount++
+			results = append(results, result)
+			continue
+		}
+
+		if exists {
+			result.Status = "overwritten"
+		} else {
+			result.Status = "copied"
+		}
+		results = append(results, result)
+	}
+
+	if errorCount > 0 {
+		return results, fmt.Errorf("copying detected source files failed with %d error(s)", errorCount)
+	}
+
+	return results, nil
+}
+
+func summarizeCopyResults(results []sourceCopyResult) (copied, overwritten, skipped, errors int) {
+	for _, result := range results {
+		switch result.Status {
+		case "copied", "would_copy":
+			copied++
+		case "overwritten", "would_overwrite":
+			overwritten++
+		case "skipped_exists":
+			skipped++
+		case "error":
+			errors++
+		}
+	}
+	return copied, overwritten, skipped, errors
+}
+
+func pathExists(path string) (bool, error) {
+	_, err := os.Lstat(path)
+	if err == nil {
+		return true, nil
+	}
+	if errors.Is(err, os.ErrNotExist) {
+		return false, nil
+	}
+	return false, fmt.Errorf("checking %s: %w", path, err)
+}
+
+func copyPathRecursive(src, dst string) error {
+	info, err := os.Lstat(src)
+	if err != nil {
+		return err
+	}
+
+	switch {
+	case info.Mode()&os.ModeSymlink != 0:
+		return copySymlink(src, dst)
+	case info.IsDir():
+		return copyDir(src, dst)
+	default:
+		return copyFileWithPerm(src, dst, info.Mode().Perm())
+	}
+}
+
+func copySymlink(src, dst string) error {
+	linkTarget, err := os.Readlink(src)
+	if err != nil {
+		return err
+	}
+	if err := os.MkdirAll(filepath.Dir(dst), 0o755); err != nil {
+		return err
+	}
+	return os.Symlink(linkTarget, dst)
+}
+
+func copyDir(src, dst string) error {
+	rootInfo, err := os.Lstat(src)
+	if err != nil {
+		return err
+	}
+	if err := os.MkdirAll(dst, rootInfo.Mode().Perm()); err != nil {
+		return err
+	}
+
+	return filepath.WalkDir(src, func(current string, entry fs.DirEntry, walkErr error) error {
+		if walkErr != nil {
+			return walkErr
+		}
+
+		rel, err := filepath.Rel(src, current)
+		if err != nil {
+			return err
+		}
+		if rel == "." {
+			return nil
+		}
+
+		target := filepath.Join(dst, rel)
+		info, err := os.Lstat(current)
+		if err != nil {
+			return err
+		}
+
+		if info.Mode()&os.ModeSymlink != 0 {
+			return copySymlink(current, target)
+		}
+		if entry.IsDir() {
+			return os.MkdirAll(target, info.Mode().Perm())
+		}
+
+		return copyFileWithPerm(current, target, info.Mode().Perm())
+	})
+}
+
+func copyFileWithPerm(src, dst string, perm os.FileMode) (err error) {
+	if err := os.MkdirAll(filepath.Dir(dst), 0o755); err != nil {
+		return err
+	}
+
+	in, err := os.Open(src)
+	if err != nil {
+		return err
+	}
+	defer func() {
+		if closeErr := in.Close(); closeErr != nil && err == nil {
+			err = closeErr
+		}
+	}()
+
+	out, err := os.OpenFile(dst, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, perm)
+	if err != nil {
+		return err
+	}
+	defer func() {
+		if closeErr := out.Close(); closeErr != nil && err == nil {
+			err = closeErr
+		}
+	}()
+
+	if _, err := io.Copy(out, in); err != nil {
+		return err
+	}
+	return nil
 }
 
 func resolveSuggestionPath(repoPath, outputPath string) string {

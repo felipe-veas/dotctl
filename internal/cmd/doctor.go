@@ -7,6 +7,7 @@ import (
 	"github.com/felipe-veas/dotctl/internal/auth"
 	"github.com/felipe-veas/dotctl/internal/gitops"
 	"github.com/felipe-veas/dotctl/internal/output"
+	"github.com/felipe-veas/dotctl/internal/secrets"
 	"github.com/felipe-veas/dotctl/pkg/types"
 	"github.com/spf13/cobra"
 )
@@ -211,6 +212,54 @@ func runDoctor(cmd *cobra.Command, args []string) error {
 				addCheck("decrypt", true, detail)
 				if !out.IsJSON() {
 					out.Success("%s", detail)
+				}
+			}
+		}
+	}
+
+	// Secrets health check.
+	if gitops.IsRepo(cfg.Repo.Path) {
+		if !out.IsJSON() {
+			out.Header("Secrets:")
+		}
+		secretsStatus, secretsErr := secrets.GetStatus(cfg.Repo.Path, "")
+		if secretsErr != nil {
+			addCheck("secrets", false, fmt.Sprintf("secrets check failed: %v", secretsErr))
+			if !out.IsJSON() {
+				out.Error("secrets check failed: %v", secretsErr)
+			}
+		} else {
+			if secretsStatus.Identity != nil {
+				detail := fmt.Sprintf("identity: %s", secretsStatus.Identity.PrivatePath)
+				addCheck("secrets_identity", true, detail)
+				if !out.IsJSON() {
+					out.Success("%s", detail)
+				}
+			} else {
+				addCheck("secrets_identity", true, "identity: not configured")
+				if !out.IsJSON() {
+					out.Info("  identity: not configured (optional)")
+				}
+			}
+
+			if len(secretsStatus.EncryptedFiles) > 0 {
+				detail := fmt.Sprintf("encrypted files: %d", len(secretsStatus.EncryptedFiles))
+				addCheck("secrets_encrypted", true, detail)
+				if !out.IsJSON() {
+					out.Success("%s", detail)
+				}
+			}
+
+			if len(secretsStatus.UnprotectedFiles) > 0 {
+				names := make([]string, 0, len(secretsStatus.UnprotectedFiles))
+				for _, f := range secretsStatus.UnprotectedFiles {
+					names = append(names, f.Path)
+				}
+				detail := fmt.Sprintf("unprotected sensitive files: %s", joinPreview(names, 5))
+				report.Warnings = append(report.Warnings, detail)
+				addCheck("secrets_unprotected", true, detail)
+				if !out.IsJSON() {
+					out.Warn("%s", detail)
 				}
 			}
 		}

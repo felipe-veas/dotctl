@@ -77,6 +77,7 @@ func NewRootCmd() *cobra.Command {
 		newBootstrapCmd(),
 		newDoctorCmd(),
 		newReposCmd(),
+		newSecretsCmd(),
 	)
 
 	return root

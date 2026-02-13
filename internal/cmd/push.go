@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -8,6 +9,7 @@ import (
 
 	"github.com/felipe-veas/dotctl/internal/gitops"
 	"github.com/felipe-veas/dotctl/internal/output"
+	"github.com/felipe-veas/dotctl/internal/secrets"
 	"github.com/spf13/cobra"
 )
 
@@ -58,6 +60,16 @@ func runPush(message string) error {
 			warnPushScopeMismatch(out, cfg.Repo.Path, scope)
 		}
 		return nil
+	}
+
+	// Preflight: check for unencrypted sensitive files.
+	if !flagForce {
+		if warns := preflightSecretsCheck(cfg.Repo.Path); len(warns) > 0 {
+			for _, w := range warns {
+				out.Warn("%s", w)
+			}
+			return fmt.Errorf("unencrypted sensitive files detected (use --force to override, or encrypt with 'dotctl secrets encrypt')")
+		}
 	}
 
 	res, err := gitops.Push(cfg.Repo.Path, message, cfg.Profile, time.Now())
@@ -126,6 +138,23 @@ func warnPushScopeMismatch(out *output.Printer, configuredRepoPath string, scope
 			configuredRepoPath,
 		)
 	}
+}
+
+// preflightSecretsCheck scans staged/modified files for unencrypted sensitive files.
+// Returns warning messages for each problematic file, or nil if clean.
+func preflightSecretsCheck(repoPath string) []string {
+	files, err := gitops.TrackedFiles(repoPath)
+	if err != nil {
+		return nil // non-fatal: don't block push if git scan fails
+	}
+
+	var warns []string
+	for _, f := range files {
+		if secrets.IsSensitiveName(filepath.Base(f)) {
+			warns = append(warns, fmt.Sprintf("unencrypted sensitive file tracked: %s (encrypt with 'dotctl secrets encrypt %s')", f, f))
+		}
+	}
+	return warns
 }
 
 func samePath(left, right string) bool {
