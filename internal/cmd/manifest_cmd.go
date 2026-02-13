@@ -198,6 +198,16 @@ func runManifestSuggest(outputPath string, copySources bool) error {
 			}
 			return copyErr
 		}
+
+		if !flagDryRun {
+			managed := make([]string, 0, len(entries))
+			for _, entry := range entries {
+				managed = append(managed, entry.Source)
+			}
+			if err := writeManagedSources(cfg.Repo.Path, managed); err != nil {
+				return err
+			}
+		}
 	}
 
 	if out.IsJSON() {

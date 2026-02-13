@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"runtime"
+	"strings"
 
 	"github.com/felipe-veas/dotctl/internal/auth"
 	"github.com/felipe-veas/dotctl/internal/config"
@@ -97,15 +98,22 @@ func newInitCmd() *cobra.Command {
 			if err := gitops.Clone(repoURL, repoPath); err != nil {
 				return err
 			}
+			gitignoreUpdate, err := ensureDefaultGitignorePatterns(repoPath, defaultInitGitignorePatterns)
+			if err != nil {
+				return err
+			}
 			if !out.IsJSON() {
 				if repoAlreadyCloned {
 					out.Info("Repo already cloned at %s", repoPath)
 				} else {
 					out.Success("Cloned to %s", repoPath)
 				}
+				if len(gitignoreUpdate.Added) > 0 {
+					out.Info("Updated .gitignore with recommended patterns: %s", strings.Join(gitignoreUpdate.Added, ", "))
+				}
 			}
 
-			_, err := cfg.UpsertRepo(config.RepoConfig{
+			_, err = cfg.UpsertRepo(config.RepoConfig{
 				Name: repoName,
 				URL:  repoURL,
 				Path: repoPath,
