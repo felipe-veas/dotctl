@@ -2,6 +2,14 @@
 
 <!-- markdownlint-disable MD024 -->
 
+## [1.8.0](https://github.com/felipe-veas/dotctl/compare/v1.7.1...v1.8.0) (2026-02-13)
+
+
+### Features
+
+* add secrets management with age encryption ([7ae1dd1](https://github.com/felipe-veas/dotctl/commit/7ae1dd1b69ca9978d172bb0efe0396b3c6afb9ad))
+* add secrets management with age encryption ([b81d3ce](https://github.com/felipe-veas/dotctl/commit/b81d3ceee04ce11ad43ee02c539a8f9784fd12f5))
+
 ## [1.7.1](https://github.com/felipe-veas/dotctl/compare/v1.7.0...v1.7.1) (2026-02-13)
 
 ### Bug Fixes
