@@ -37,10 +37,14 @@ func Parse(data []byte) (*Manifest, error) {
 // validate checks the manifest for basic errors.
 func validate(m *Manifest) error {
 	seen := make(map[string]bool)
-	for i, f := range m.Files {
-		if f.Source == "" {
-			return fmt.Errorf("files[%d]: source is required", i)
+	for i := range m.Files {
+		source, err := normalizeSourcePath(m.Files[i].Source)
+		if err != nil {
+			return fmt.Errorf("files[%d]: %w", i, err)
 		}
+		m.Files[i].Source = source
+
+		f := m.Files[i]
 		if f.Target == "" {
 			return fmt.Errorf("files[%d]: target is required", i)
 		}
@@ -62,6 +66,37 @@ func validate(m *Manifest) error {
 		seen[f.Target] = true
 	}
 	return nil
+}
+
+func normalizeSourcePath(source string) (string, error) {
+	trimmed := strings.TrimSpace(strings.ReplaceAll(source, "\\", "/"))
+	if trimmed == "" {
+		return "", fmt.Errorf("source is required")
+	}
+
+	normalized := path.Clean(trimmed)
+	if normalized == "." {
+		return "", fmt.Errorf("source is required")
+	}
+	if path.IsAbs(normalized) || isWindowsAbsolutePath(normalized) {
+		return "", fmt.Errorf("source %q must be relative to repo root", source)
+	}
+	if normalized == ".." || strings.HasPrefix(normalized, "../") {
+		return "", fmt.Errorf("source %q escapes repo root", source)
+	}
+
+	return normalized, nil
+}
+
+func isWindowsAbsolutePath(p string) bool {
+	if len(p) < 3 {
+		return false
+	}
+	drive := p[0]
+	if (drive < 'A' || drive > 'Z') && (drive < 'a' || drive > 'z') {
+		return false
+	}
+	return p[1] == ':' && p[2] == '/'
 }
 
 func hasEncryptedSuffix(source string) bool {

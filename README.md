@@ -97,10 +97,6 @@ Current documentation:
 - [Troubleshooting](./docs/troubleshooting.md)
 - [Roadmap](./docs/roadmap.md)
 
-Historical planning archive:
-
-- [Archive index](./docs/archive/README.md)
-
 ## Quickstart
 
 Recommended onboarding: initialize first, generate suggested manifest second, refine it, then sync.
@@ -184,7 +180,13 @@ After running `dotctl manifest suggest`, use this workflow:
 1. Use `mode: copy` only when symlink is not appropriate.
 1. Use `decrypt: true` for sensitive files and keep encrypted sources as `.enc.*`.
 1. Confirm detected files exist in the repo under the suggested `source` paths.
-1. Merge selected entries into `manifest.yaml`.
+1. If this is your first manifest and the suggested file looks good as-is, rename it:
+
+   ```bash
+   mv manifest.suggested.yaml manifest.yaml
+   ```
+
+1. If you already have a `manifest.yaml`, merge selected entries from `manifest.suggested.yaml` into the existing file.
 1. Commit and push those changes.
 
 Typical repository structure after this step:

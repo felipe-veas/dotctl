@@ -217,6 +217,20 @@ func TestResolveIgnorePatternMatchesFullPath(t *testing.T) {
 	}
 }
 
+func TestResolveRejectsSourceTraversal(t *testing.T) {
+	m := &Manifest{
+		Files: []FileEntry{
+			{Source: "../private/key", Target: "~/.ssh/id_rsa"},
+		},
+	}
+
+	ctx := profile.Context{OS: "linux", Profile: "server", Home: "/home/test"}
+	_, _, err := Resolve(m, ctx, "/repo")
+	if err == nil {
+		t.Fatal("expected error for source path traversal")
+	}
+}
+
 func TestStringOrSliceMatches(t *testing.T) {
 	tests := []struct {
 		s     StringOrSlice

@@ -78,6 +78,48 @@ files:
 	}
 }
 
+func TestParseRejectsAbsoluteSource(t *testing.T) {
+	data := []byte(`
+version: 1
+files:
+  - source: /etc/passwd
+    target: ~/.zshrc
+`)
+
+	_, err := Parse(data)
+	if err == nil {
+		t.Fatal("expected error for absolute source")
+	}
+}
+
+func TestParseRejectsSourceTraversal(t *testing.T) {
+	data := []byte(`
+version: 1
+files:
+  - source: ../secrets/token.txt
+    target: ~/.token
+`)
+
+	_, err := Parse(data)
+	if err == nil {
+		t.Fatal("expected error for source path traversal")
+	}
+}
+
+func TestParseRejectsWindowsAbsoluteSource(t *testing.T) {
+	data := []byte(`
+version: 1
+files:
+  - source: C:\Users\user\.ssh\id_rsa
+    target: ~/.ssh/id_rsa
+`)
+
+	_, err := Parse(data)
+	if err == nil {
+		t.Fatal("expected error for windows absolute source")
+	}
+}
+
 func TestParseMissingTarget(t *testing.T) {
 	data := []byte(`
 version: 1
