@@ -291,6 +291,8 @@ Useful global flags:
 - default output: `<active-repo>/manifest.suggested.yaml`
 - before scanning, dotctl asks for explicit confirmation (`[y/N]`)
 - by default, it also copies detected local config files/directories into repo `source` paths
+- on `dotctl sync`, if a `manifest.yaml` `source` is missing in the repo but its local `target` exists, dotctl backfills the repo source from that local target
+- on later `dotctl sync`, sources previously managed by this flow are pruned from the repo if their `source` entries were removed from `manifest.yaml`
 - use `--force` to skip confirmation (useful for automation)
 - use `--dry-run` to preview without writing files
 - use `--output <path>` to customize output file location
