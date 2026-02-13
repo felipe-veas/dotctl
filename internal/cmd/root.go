@@ -72,6 +72,7 @@ func NewRootCmd() *cobra.Command {
 		newWatchCmd(),
 		newPullCmd(),
 		newPushCmd(),
+		newManifestCmd(),
 		newOpenCmd(),
 		newBootstrapCmd(),
 		newDoctorCmd(),
