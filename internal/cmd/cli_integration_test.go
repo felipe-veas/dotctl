@@ -456,6 +456,11 @@ func initForIntegration(t *testing.T, env cliTestEnv) {
 	if err != nil {
 		t.Fatalf("init failed: %v", err)
 	}
+
+	// dotctl push now uses Git's configured identity.
+	gitCmd(t, env.clonePath, "config", "user.name", "integration-user")
+	gitCmd(t, env.clonePath, "config", "user.email", "integration-user@example.com")
+	gitCmd(t, env.clonePath, "config", "commit.gpgsign", "false")
 }
 
 func setupCLIIntegration(t *testing.T, includeSensitive bool) cliTestEnv {

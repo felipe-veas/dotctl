@@ -137,6 +137,7 @@ func TestPush(t *testing.T) {
 	verifier := filepath.Join(t.TempDir(), "verifier")
 
 	gitCmd(t, "", "clone", remote, client)
+	setRepoIdentity(t, client, "integration-user", "integration-user@example.com")
 
 	if err := os.WriteFile(filepath.Join(client, "new.txt"), []byte("hello\n"), 0o644); err != nil {
 		t.Fatalf("write new file: %v", err)
@@ -157,6 +158,32 @@ func TestPush(t *testing.T) {
 	gitCmd(t, "", "clone", remote, verifier)
 	if _, err := os.Stat(filepath.Join(verifier, "new.txt")); err != nil {
 		t.Fatalf("expected new.txt in remote clone: %v", err)
+	}
+}
+
+func TestPushUsesLocalGitIdentity(t *testing.T) {
+	requireGit(t)
+
+	remote := setupRemoteRepo(t)
+	client := filepath.Join(t.TempDir(), "client")
+	verifier := filepath.Join(t.TempDir(), "verifier")
+
+	gitCmd(t, "", "clone", remote, client)
+	setRepoIdentity(t, client, "Local Author", "local-author@example.com")
+
+	if err := os.WriteFile(filepath.Join(client, "new.txt"), []byte("hello\n"), 0o644); err != nil {
+		t.Fatalf("write new file: %v", err)
+	}
+
+	now := time.Date(2026, 2, 13, 9, 0, 0, 0, time.UTC)
+	if _, err := Push(client, "custom message", "devserver", now); err != nil {
+		t.Fatalf("Push: %v", err)
+	}
+
+	gitCmd(t, "", "clone", remote, verifier)
+	author := gitCmd(t, verifier, "log", "-1", "--pretty=%an <%ae>")
+	if author != "Local Author <local-author@example.com>" {
+		t.Fatalf("author = %q, want Local Author <local-author@example.com>", author)
 	}
 }
 
@@ -220,6 +247,14 @@ func TestWithPushHintNonFastForward(t *testing.T) {
 	}
 }
 
+func TestWithCommitHintMissingIdentity(t *testing.T) {
+	baseErr := errors.New("creating commit: git commit failed: Author identity unknown")
+	err := withCommitHint(baseErr)
+	if !strings.Contains(strings.ToLower(err.Error()), "configure git identity") {
+		t.Fatalf("expected identity hint, got: %v", err)
+	}
+}
+
 func requireGit(t *testing.T) {
 	t.Helper()
 	if _, err := exec.LookPath("git"); err != nil {
@@ -264,4 +299,11 @@ func gitCmd(t *testing.T, dir string, args ...string) string {
 		t.Fatalf("git %s failed: %v\n%s", strings.Join(args, " "), err, string(out))
 	}
 	return strings.TrimSpace(string(out))
+}
+
+func setRepoIdentity(t *testing.T, repoPath, name, email string) {
+	t.Helper()
+	gitCmd(t, repoPath, "config", "user.name", name)
+	gitCmd(t, repoPath, "config", "user.email", email)
+	gitCmd(t, repoPath, "config", "commit.gpgsign", "false")
 }

@@ -1,7 +1,8 @@
 # Changelog
 
-## [1.6.0](https://github.com/felipe-veas/dotctl/compare/v1.5.0...v1.6.0) (2026-02-13)
+<!-- markdownlint-disable MD024 -->
 
+## [1.6.0](https://github.com/felipe-veas/dotctl/compare/v1.5.0...v1.6.0) (2026-02-13)
 
 ### Features
 
@@ -9,7 +10,6 @@
 * **cmd:** warn when pushing from a different dirty repo ([27c86be](https://github.com/felipe-veas/dotctl/commit/27c86bebcc86fb8bcd0d7805ae310e949c477609))
 
 ## [1.5.0](https://github.com/felipe-veas/dotctl/compare/v1.4.0...v1.5.0) (2026-02-12)
-
 
 ### Features
 
@@ -20,7 +20,6 @@
 
 ## [1.4.0](https://github.com/felipe-veas/dotctl/compare/v1.3.0...v1.4.0) (2026-02-12)
 
-
 ### Features
 
 * **core:** implement file decryption with age/sops support ([58713fd](https://github.com/felipe-veas/dotctl/commit/58713fd29bad5d8ddbd6fd8b661426ee2f49abe4))
@@ -29,7 +28,6 @@
 * **tray:** implement native notifications for macOS ([8735458](https://github.com/felipe-veas/dotctl/commit/8735458b05e029761e7929bc381eecd8e7e9c921))
 
 ## [1.3.0](https://github.com/felipe-veas/dotctl/compare/v1.2.0...v1.3.0) (2026-02-12)
-
 
 ### Features
 
@@ -41,13 +39,11 @@
 * M4 hardening (logging, locking, rollback, security) ([9384f01](https://github.com/felipe-veas/dotctl/commit/9384f01fd192c30023dddfa36ba33c02201a6a7d))
 * **manifest:** support ignore patterns filtering ([c91e559](https://github.com/felipe-veas/dotctl/commit/c91e55913a44e12335b78b5ca2e88d01db8de373))
 
-
 ### Bug Fixes
 
 * **cmd:** add logging to hooks and integration tests ([59ab425](https://github.com/felipe-veas/dotctl/commit/59ab425ef1cd552c42168973d3ec30ba473b58c3))
 
 ## [1.2.0](https://github.com/felipe-veas/dotctl/compare/v1.1.0...v1.2.0) (2026-02-12)
-
 
 ### Features
 
@@ -58,7 +54,6 @@
 
 ## [1.1.0](https://github.com/felipe-veas/dotctl/compare/v1.0.0...v1.1.0) (2026-02-12)
 
-
 ### Features
 
 * **cmd:** implement git integration, doctor, and status commands ([8c3ec38](https://github.com/felipe-veas/dotctl/commit/8c3ec3896d1b0abac9584e22a9b6fe223bdd35a6))
@@ -66,7 +61,6 @@
 * implement git operations, auth, and doctor commands ([7906b7d](https://github.com/felipe-veas/dotctl/commit/7906b7d428a968017f8de000c406586998eee4f2))
 
 ## 1.0.0 (2026-02-12)
-
 
 ### Features
 

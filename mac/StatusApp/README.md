@@ -1,6 +1,6 @@
-# StatusApp (macOS menubar)
+# StatusApp (macOS status bar)
 
-`mac/StatusApp` contiene el scaffold Swift para la app de menubar.
+`mac/StatusApp` contains the Swift status bar app scaffold.
 
 ## Build
 
@@ -8,16 +8,16 @@
 ./scripts/build-app-macos.sh
 ```
 
-El script:
+The script:
 
-1. Construye `dotctl` universal (`arm64` + `amd64`)
-2. Compila el binario Swift `StatusApp`
-3. Ensambla `bin/StatusApp.app` con `dotctl` embebido en `Contents/Resources/dotctl`
+1. Builds a universal `dotctl` binary (`arm64` + `amd64`).
+2. Compiles the Swift `StatusApp` binary.
+3. Assembles `bin/StatusApp.app` with embedded `dotctl` at `Contents/Resources/dotctl`.
 
 ## Autostart (opt-in)
 
 - LaunchAgent plist: `mac/StatusApp/LaunchAgents/com.felipeveas.dotctl.statusapp.plist`
-- Instalación:
+- Install command:
 
 ```bash
 ./scripts/install-launchagent-macos.sh

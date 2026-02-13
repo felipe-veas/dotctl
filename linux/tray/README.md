@@ -1,32 +1,32 @@
 # Linux Tray App
 
-`linux/tray` contiene la app de system tray para Linux.
+`linux/tray` contains the Linux system tray application.
 
 ## Build
 
-La implementación real está detrás del build tag `tray` (usa `getlantern/systray`):
+The real implementation is behind the `tray` build tag (`getlantern/systray`):
 
 ```bash
 CGO_ENABLED=1 go build -tags tray -o bin/dotctl-tray ./linux/tray
 ```
 
-O usando el script:
+Or with the helper script:
 
 ```bash
 ./scripts/build-tray-linux.sh
 ```
 
-## Requisitos
+## Requirements
 
 - `pkg-config`
-- `libayatana-appindicator3-dev` (o `libappindicator3-dev`)
+- `libayatana-appindicator3-dev` (or `libappindicator3-dev`)
 
 ## Autostart
 
-- `.desktop`: `linux/tray/autostart/dotctl-tray.desktop`
-- systemd user service: `linux/tray/systemd/dotctl-tray.service`
+- Desktop entry: `linux/tray/autostart/dotctl-tray.desktop`
+- user systemd service: `linux/tray/systemd/dotctl-tray.service`
 
-Instalación rápida:
+Quick install:
 
 ```bash
 ./scripts/install-tray-autostart-linux.sh desktop
