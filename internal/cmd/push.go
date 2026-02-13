@@ -1,6 +1,9 @@
 package cmd
 
 import (
+	"os"
+	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/felipe-veas/dotctl/internal/gitops"
@@ -32,6 +35,7 @@ func runPush(message string) error {
 	if err != nil {
 		return err
 	}
+	scope := detectPushScope(cfg.Repo.Path)
 
 	if flagDryRun {
 		dirty, err := gitops.IsDirty(cfg.Repo.Path)
@@ -51,6 +55,7 @@ func runPush(message string) error {
 			out.Info("Would stage, commit and push local changes")
 		} else {
 			out.Info("Nothing to push")
+			warnPushScopeMismatch(out, cfg.Repo.Path, scope)
 		}
 		return nil
 	}
@@ -66,6 +71,7 @@ func runPush(message string) error {
 
 	if res.NothingToPush {
 		out.Info("Nothing to push")
+		warnPushScopeMismatch(out, cfg.Repo.Path, scope)
 		return nil
 	}
 
@@ -75,4 +81,73 @@ func runPush(message string) error {
 	}
 
 	return nil
+}
+
+type pushScope struct {
+	CurrentDir              string
+	DifferentFromConfigured bool
+	CurrentDirIsRepo        bool
+	CurrentDirDirty         bool
+}
+
+func detectPushScope(configRepoPath string) pushScope {
+	info := pushScope{}
+
+	cwd, err := os.Getwd()
+	if err != nil {
+		return info
+	}
+	info.CurrentDir = cwd
+
+	if samePath(cwd, configRepoPath) {
+		return info
+	}
+	info.DifferentFromConfigured = true
+
+	if !gitops.IsRepo(cwd) {
+		return info
+	}
+	info.CurrentDirIsRepo = true
+
+	dirty, err := gitops.IsDirty(cwd)
+	if err != nil {
+		return info
+	}
+	info.CurrentDirDirty = dirty
+
+	return info
+}
+
+func warnPushScopeMismatch(out *output.Printer, configuredRepoPath string, scope pushScope) {
+	if scope.DifferentFromConfigured && scope.CurrentDirIsRepo && scope.CurrentDirDirty {
+		out.Warn(
+			"Current directory has local changes (%s), but dotctl push uses configured repo path (%s)",
+			scope.CurrentDir,
+			configuredRepoPath,
+		)
+	}
+}
+
+func samePath(left, right string) bool {
+	leftCanonical := canonicalPath(left)
+	rightCanonical := canonicalPath(right)
+	return leftCanonical != "" && rightCanonical != "" && leftCanonical == rightCanonical
+}
+
+func canonicalPath(path string) string {
+	path = strings.TrimSpace(path)
+	if path == "" {
+		return ""
+	}
+
+	abs, err := filepath.Abs(path)
+	if err != nil {
+		return ""
+	}
+
+	if resolved, err := filepath.EvalSymlinks(abs); err == nil {
+		return filepath.Clean(resolved)
+	}
+
+	return filepath.Clean(abs)
 }
