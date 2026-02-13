@@ -4,7 +4,6 @@
 
 ## [1.7.0](https://github.com/felipe-veas/dotctl/compare/v1.6.0...v1.7.0) (2026-02-13)
 
-
 ### Features
 
 * add manifest suggest command and update documentation ([7337348](https://github.com/felipe-veas/dotctl/commit/7337348f4d8beb46871b111f2895b37d5634ff4d))
