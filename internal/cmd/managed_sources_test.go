@@ -109,6 +109,62 @@ func TestPruneManagedSourcesDryRunDoesNotDelete(t *testing.T) {
 	}
 }
 
+func TestPruneManagedSourcesKeepsParentWhenChildActive(t *testing.T) {
+	repo := t.TempDir()
+	tmuxPath := filepath.Join(repo, "configs", "tmux", "tmux.conf")
+	if err := os.MkdirAll(filepath.Dir(tmuxPath), 0o755); err != nil {
+		t.Fatalf("mkdir tmux dir: %v", err)
+	}
+	if err := os.WriteFile(tmuxPath, []byte("tmux"), 0o644); err != nil {
+		t.Fatalf("write tmux config: %v", err)
+	}
+	if err := writeManagedSources(repo, []string{"configs/tmux"}); err != nil {
+		t.Fatalf("writeManagedSources: %v", err)
+	}
+
+	results, err := pruneManagedSources(repo, []manifest.FileEntry{
+		{Source: "configs/tmux/tmux.conf", Target: "~/.config/tmux/tmux.conf"},
+	}, false)
+	if err != nil {
+		t.Fatalf("pruneManagedSources: %v", err)
+	}
+	if len(results) != 0 {
+		t.Fatalf("expected no prune results, got %v", results)
+	}
+
+	if _, err := os.Stat(tmuxPath); err != nil {
+		t.Fatalf("expected tmux source kept: %v", err)
+	}
+}
+
+func TestPruneManagedSourcesKeepsChildWhenParentActive(t *testing.T) {
+	repo := t.TempDir()
+	tmuxPath := filepath.Join(repo, "configs", "tmux", "tmux.conf")
+	if err := os.MkdirAll(filepath.Dir(tmuxPath), 0o755); err != nil {
+		t.Fatalf("mkdir tmux dir: %v", err)
+	}
+	if err := os.WriteFile(tmuxPath, []byte("tmux"), 0o644); err != nil {
+		t.Fatalf("write tmux config: %v", err)
+	}
+	if err := writeManagedSources(repo, []string{"configs/tmux/tmux.conf"}); err != nil {
+		t.Fatalf("writeManagedSources: %v", err)
+	}
+
+	results, err := pruneManagedSources(repo, []manifest.FileEntry{
+		{Source: "configs/tmux", Target: "~/.config/tmux"},
+	}, false)
+	if err != nil {
+		t.Fatalf("pruneManagedSources: %v", err)
+	}
+	if len(results) != 0 {
+		t.Fatalf("expected no prune results, got %v", results)
+	}
+
+	if _, err := os.Stat(tmuxPath); err != nil {
+		t.Fatalf("expected tmux source kept: %v", err)
+	}
+}
+
 func TestBackfillMissingSourcesFromTargetsCopiesFile(t *testing.T) {
 	repo := t.TempDir()
 	home := t.TempDir()
