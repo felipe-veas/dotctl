@@ -152,3 +152,142 @@ func TestResolveSuggestionPath(t *testing.T) {
 		t.Fatalf("absolute output path = %q", abs)
 	}
 }
+
+func TestCopySuggestedSourcesCopiesIntoRepo(t *testing.T) {
+	home := t.TempDir()
+	configHome := filepath.Join(home, ".config")
+	repo := filepath.Join(t.TempDir(), "repo")
+	if err := os.MkdirAll(repo, 0o755); err != nil {
+		t.Fatalf("mkdir repo: %v", err)
+	}
+
+	if err := os.WriteFile(filepath.Join(home, ".zshrc"), []byte("export Z=1\n"), 0o644); err != nil {
+		t.Fatalf("write .zshrc: %v", err)
+	}
+	if err := os.MkdirAll(filepath.Join(configHome, "fish"), 0o755); err != nil {
+		t.Fatalf("mkdir fish: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(configHome, "fish", "config.fish"), []byte("set -g fish_greeting\n"), 0o644); err != nil {
+		t.Fatalf("write config.fish: %v", err)
+	}
+
+	candidates, _, err := discoverManifestCandidates(home, configHome, []string{
+		".zshrc",
+		".config/fish",
+	})
+	if err != nil {
+		t.Fatalf("discoverManifestCandidates: %v", err)
+	}
+
+	results, err := copySuggestedSources(repo, candidates, false, false)
+	if err != nil {
+		t.Fatalf("copySuggestedSources: %v", err)
+	}
+	if len(results) != 2 {
+		t.Fatalf("result count = %d, want 2", len(results))
+	}
+
+	zshData, err := os.ReadFile(filepath.Join(repo, "configs", "zsh", ".zshrc"))
+	if err != nil {
+		t.Fatalf("read copied zshrc: %v", err)
+	}
+	if string(zshData) != "export Z=1\n" {
+		t.Fatalf("copied zshrc content = %q", string(zshData))
+	}
+
+	fishData, err := os.ReadFile(filepath.Join(repo, "configs", "fish", "config.fish"))
+	if err != nil {
+		t.Fatalf("read copied config.fish: %v", err)
+	}
+	if string(fishData) != "set -g fish_greeting\n" {
+		t.Fatalf("copied config.fish content = %q", string(fishData))
+	}
+}
+
+func TestCopySuggestedSourcesSkipsExistingWithoutForce(t *testing.T) {
+	home := t.TempDir()
+	configHome := filepath.Join(home, ".config")
+	repo := filepath.Join(t.TempDir(), "repo")
+	if err := os.MkdirAll(repo, 0o755); err != nil {
+		t.Fatalf("mkdir repo: %v", err)
+	}
+
+	if err := os.WriteFile(filepath.Join(home, ".zshrc"), []byte("local\n"), 0o644); err != nil {
+		t.Fatalf("write .zshrc: %v", err)
+	}
+	repoPath := filepath.Join(repo, "configs", "zsh", ".zshrc")
+	if err := os.MkdirAll(filepath.Dir(repoPath), 0o755); err != nil {
+		t.Fatalf("mkdir repo target dir: %v", err)
+	}
+	if err := os.WriteFile(repoPath, []byte("existing\n"), 0o644); err != nil {
+		t.Fatalf("write existing repo file: %v", err)
+	}
+
+	candidates, _, err := discoverManifestCandidates(home, configHome, []string{".zshrc"})
+	if err != nil {
+		t.Fatalf("discoverManifestCandidates: %v", err)
+	}
+
+	results, err := copySuggestedSources(repo, candidates, false, false)
+	if err != nil {
+		t.Fatalf("copySuggestedSources: %v", err)
+	}
+	if len(results) != 1 {
+		t.Fatalf("result count = %d, want 1", len(results))
+	}
+	if results[0].Status != "skipped_exists" {
+		t.Fatalf("status = %q, want skipped_exists", results[0].Status)
+	}
+
+	data, err := os.ReadFile(repoPath)
+	if err != nil {
+		t.Fatalf("read repo file: %v", err)
+	}
+	if string(data) != "existing\n" {
+		t.Fatalf("repo file content = %q, want existing\\n", string(data))
+	}
+}
+
+func TestCopySuggestedSourcesOverwritesWithForce(t *testing.T) {
+	home := t.TempDir()
+	configHome := filepath.Join(home, ".config")
+	repo := filepath.Join(t.TempDir(), "repo")
+	if err := os.MkdirAll(repo, 0o755); err != nil {
+		t.Fatalf("mkdir repo: %v", err)
+	}
+
+	if err := os.WriteFile(filepath.Join(home, ".zshrc"), []byte("local\n"), 0o644); err != nil {
+		t.Fatalf("write .zshrc: %v", err)
+	}
+	repoPath := filepath.Join(repo, "configs", "zsh", ".zshrc")
+	if err := os.MkdirAll(filepath.Dir(repoPath), 0o755); err != nil {
+		t.Fatalf("mkdir repo target dir: %v", err)
+	}
+	if err := os.WriteFile(repoPath, []byte("existing\n"), 0o644); err != nil {
+		t.Fatalf("write existing repo file: %v", err)
+	}
+
+	candidates, _, err := discoverManifestCandidates(home, configHome, []string{".zshrc"})
+	if err != nil {
+		t.Fatalf("discoverManifestCandidates: %v", err)
+	}
+
+	results, err := copySuggestedSources(repo, candidates, true, false)
+	if err != nil {
+		t.Fatalf("copySuggestedSources: %v", err)
+	}
+	if len(results) != 1 {
+		t.Fatalf("result count = %d, want 1", len(results))
+	}
+	if results[0].Status != "overwritten" {
+		t.Fatalf("status = %q, want overwritten", results[0].Status)
+	}
+
+	data, err := os.ReadFile(repoPath)
+	if err != nil {
+		t.Fatalf("read repo file: %v", err)
+	}
+	if string(data) != "local\n" {
+		t.Fatalf("repo file content = %q, want local\\n", string(data))
+	}
+}

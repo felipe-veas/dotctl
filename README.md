@@ -143,6 +143,29 @@ You can also set a custom clone location:
 dotctl init --repo <repo-url> --profile laptop --path /custom/path
 ```
 
+During init, dotctl also ensures recommended default ignore patterns in repo `.gitignore`:
+
+```gitignore
+.DS_Store
+Thumbs.db
+.env
+.env.*
+*.pem
+*.key
+*.p12
+*.pfx
+*.token
+*credentials*
+*secret*
+!configs/secrets/
+!configs/secrets/**
+!configs/credentials/
+!configs/credentials/**
+configs/tmux/plugins/
+```
+
+You can refine this list in your repo if your workflow needs different rules.
+
 ### 3. Generate a suggested manifest (recommended)
 
 Scan common config paths (asks for confirmation first):
@@ -154,7 +177,7 @@ dotctl manifest suggest
 Then:
 
 1. Review `manifest.suggested.yaml`.
-2. Copy the selected local config files/directories into your repo under the suggested `source` paths.
+2. Confirm the detected files were copied into your repo under the suggested `source` paths.
 3. Merge selected entries into `manifest.yaml`.
 4. Commit and push those changes.
 
@@ -267,9 +290,13 @@ Useful global flags:
 
 - default output: `<active-repo>/manifest.suggested.yaml`
 - before scanning, dotctl asks for explicit confirmation (`[y/N]`)
+- by default, it also copies detected local config files/directories into repo `source` paths
+- on `dotctl sync`, if a `manifest.yaml` `source` is missing in the repo but its local `target` exists, dotctl backfills the repo source from that local target
+- on later `dotctl sync`, sources previously managed by this flow are pruned from the repo if their `source` entries were removed from `manifest.yaml`
 - use `--force` to skip confirmation (useful for automation)
 - use `--dry-run` to preview without writing files
 - use `--output <path>` to customize output file location
+- use `--no-copy-sources` to only generate the suggestion without copying files
 
 Current scan candidates include:
 
@@ -292,6 +319,9 @@ dotctl manifest suggest --force
 
 # preview only
 dotctl manifest suggest --dry-run --force
+
+# generate suggestion only (no source copy)
+dotctl manifest suggest --no-copy-sources --force
 
 # custom output filename/path
 dotctl manifest suggest --output manifest.suggested.work.yaml --force
