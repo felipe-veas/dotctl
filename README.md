@@ -194,6 +194,37 @@ dotctl status
 3. run hooks
 4. commit and push (if there are changes)
 
+## Use the same repo on another machine
+
+If you already have a working dotfiles repo on machine A and want the same setup on machine B:
+
+1. On machine A, ensure everything is pushed:
+
+```bash
+dotctl status
+dotctl push -m "sync latest dotfiles before onboarding machine B"
+```
+
+1. On machine B, install `dotctl` and run init with the same repository URL:
+
+```bash
+dotctl init --repo git@github.com:<you>/dotfiles.git --profile laptop
+```
+
+1. On machine B, apply the repo state:
+
+```bash
+dotctl doctor
+dotctl sync
+```
+
+Notes:
+
+- You do not need to manually clone the repo first; `dotctl init` clones it automatically.
+- If both machines should use identical rules, keep the same `--profile`.
+- If a machine needs different rules, use another profile and `when.profile` entries in `manifest.yaml`.
+- `dotctl manifest suggest` is mainly for bootstrapping a new manifest, not required when reusing an existing one.
+
 ## Daily commands
 
 | Command | Purpose |
