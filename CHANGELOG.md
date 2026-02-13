@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.6.0](https://github.com/felipe-veas/dotctl/compare/v1.5.0...v1.6.0) (2026-02-13)
+
+
+### Features
+
+* **cmd:** warn when pushing from a different dirty repo ([704ffe9](https://github.com/felipe-veas/dotctl/commit/704ffe993d08b816435457be89fc873c5d6d6990))
+* **cmd:** warn when pushing from a different dirty repo ([27c86be](https://github.com/felipe-veas/dotctl/commit/27c86bebcc86fb8bcd0d7805ae310e949c477609))
+
 ## [1.5.0](https://github.com/felipe-veas/dotctl/compare/v1.4.0...v1.5.0) (2026-02-12)
 
 
