@@ -2,6 +2,13 @@
 
 <!-- markdownlint-disable MD024 -->
 
+## [1.11.1](https://github.com/felipe-veas/dotctl/compare/v1.11.0...v1.11.1) (2026-02-13)
+
+
+### Bug Fixes
+
+* **manifest:** prevent path traversal in source validation ([d1d49b7](https://github.com/felipe-veas/dotctl/commit/d1d49b7284c70d5b961fda4b18488dc9802b977c))
+
 ## [1.11.0](https://github.com/felipe-veas/dotctl/compare/v1.10.0...v1.11.0) (2026-02-13)
 
 ### Features
