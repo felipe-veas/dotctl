@@ -149,19 +149,25 @@ final class StatusBarController: NSObject, UNUserNotificationCenterDelegate {
     }
 
     private func setState(_ state: UIState) {
-        let symbolName: String
+        let iconState: DotCtlIconState
         switch state {
         case .synced:
-            symbolName = "checkmark.circle"
+            iconState = .synced
         case .warning:
-            symbolName = "exclamationmark.triangle"
+            iconState = .warning
         case .error:
-            symbolName = "xmark.circle"
+            iconState = .error
         case .syncing:
-            symbolName = "arrow.triangle.2.circlepath"
+            iconState = .syncing
         }
 
-        statusItem.button?.image = NSImage(systemSymbolName: symbolName, accessibilityDescription: "dotctl")
+        guard let button = statusItem.button else { return }
+        button.title = ""
+        button.imagePosition = .imageOnly
+        button.image = DotCtlIconFactory.statusBarIcon(for: iconState)
+
+        button.toolTip = "DotCtl"
+        statusItem.isVisible = true
     }
 
     private func setBusy(_ value: Bool) {
@@ -225,9 +231,63 @@ final class StatusBarController: NSObject, UNUserNotificationCenterDelegate {
     }
 
     @objc private func doctorAction() {
-        runAction(actionName: "doctor", statusText: "running doctor", refreshAfter: true, notify: true) {
-            try self.bridge.doctor()
+        guard !busy else { return }
+        setBusy(true)
+        setState(.syncing)
+        statusMenuItem.title = "Status: running doctor..."
+
+        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+            guard let self else { return }
+            var result: DotctlDoctorResult?
+            var actionError: Error?
+            do {
+                result = try self.bridge.doctor()
+            } catch {
+                actionError = error
+            }
+
+            DispatchQueue.main.async {
+                self.setBusy(false)
+                if let actionError {
+                    self.showError(actionError)
+                    self.showDoctorAlert(title: "dotctl doctor failed", body: actionError.localizedDescription)
+                    return
+                }
+                if let result {
+                    self.showDoctorAlert(result: result)
+                }
+                self.refreshStatus()
+            }
         }
+    }
+
+    private func showDoctorAlert(result: DotctlDoctorResult) {
+        let lines = result.checks.map { check in
+            "\(check.ok ? "\u{2705}" : "\u{274C}") \(check.name): \(check.detail)"
+        }
+        let symlinksLine = "\n\u{1F517} Symlinks: \(result.symlinks.ok)/\(result.symlinks.total) ok"
+        let body = lines.joined(separator: "\n") + symlinksLine
+
+        showDoctorAlert(
+            title: result.healthy ? "dotctl: healthy" : "dotctl: issues found",
+            body: body
+        )
+    }
+
+    private func showDoctorAlert(title: String, body: String) {
+        NSApp.setActivationPolicy(.regular)
+        let alert = NSAlert()
+        if let icon = NSApp.applicationIconImage, icon.size.width > 0, icon.size.height > 0 {
+            alert.icon = icon
+        } else {
+            alert.icon = DotCtlIconFactory.appIcon(size: 128)
+        }
+        alert.messageText = title
+        alert.informativeText = body
+        alert.alertStyle = .informational
+        alert.addButton(withTitle: "OK")
+        alert.runModal()
+        NSApp.setActivationPolicy(.accessory)
     }
 
     @objc private func openRepoAction() {
@@ -279,7 +339,7 @@ final class StatusBarController: NSObject, UNUserNotificationCenterDelegate {
     func userNotificationCenter(
         _ center: UNUserNotificationCenter,
         willPresent notification: UNNotification
-    ) -> UNNotificationPresentationOptions {
+    ) async -> UNNotificationPresentationOptions {
         return [.banner, .list, .sound]
     }
 }

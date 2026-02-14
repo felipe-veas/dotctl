@@ -40,6 +40,18 @@ struct AuthStatus: Decodable {
     let ok: Bool
 }
 
+struct DotctlDoctorResult: Decodable {
+    let healthy: Bool
+    let checks: [DoctorCheck]
+    let symlinks: SymlinkStatus
+}
+
+struct DoctorCheck: Decodable {
+    let name: String
+    let ok: Bool
+    let detail: String
+}
+
 enum DotctlBridgeError: LocalizedError {
     case binaryNotFound
     case commandFailed(String)
@@ -88,8 +100,14 @@ final class DotctlBridge {
         _ = try run(["push", "--json"])
     }
 
-    func doctor() throws {
-        _ = try run(["doctor", "--json"])
+    func doctor() throws -> DotctlDoctorResult {
+        let output = try run(["doctor", "--json"])
+        do {
+            return try decoder.decode(DotctlDoctorResult.self, from: output)
+        } catch {
+            let raw = String(data: output, encoding: .utf8) ?? "<non-utf8>"
+            throw DotctlBridgeError.invalidOutput("Failed to parse doctor JSON: \(raw)")
+        }
     }
 
     func openRepo() throws {

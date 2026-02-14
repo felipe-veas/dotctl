@@ -520,7 +520,7 @@ Defaults (when XDG vars are not set):
 
 ## Optional tray apps
 
-- macOS status app instructions: [mac/StatusApp/README.md](./mac/StatusApp/README.md)
+- macOS DotCtl app instructions: [mac/DotCtl/README.md](./mac/DotCtl/README.md)
 - Linux tray instructions: [linux/tray/README.md](./linux/tray/README.md)
 
 ## Troubleshooting
