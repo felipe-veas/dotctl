@@ -2,6 +2,14 @@
 
 <!-- markdownlint-disable MD024 -->
 
+## [1.12.0](https://github.com/felipe-veas/dotctl/compare/v1.11.1...v1.12.0) (2026-02-14)
+
+
+### Features
+
+* **macos:** rename StatusApp to DotCtl and add icon support ([ca5a5a6](https://github.com/felipe-veas/dotctl/commit/ca5a5a61742e6f9c9a4e2cad3a246974cb97b169))
+* **macos:** rename StatusApp to DotCtl and add icon support ([8b8f9bc](https://github.com/felipe-veas/dotctl/commit/8b8f9bc67970c866e7601c6ef82893a3321e337c))
+
 ## [1.11.1](https://github.com/felipe-veas/dotctl/compare/v1.11.0...v1.11.1) (2026-02-13)
 
 ### Bug Fixes
