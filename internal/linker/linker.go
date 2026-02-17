@@ -7,6 +7,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/felipe-veas/dotctl/internal/backup"
 	"github.com/felipe-veas/dotctl/internal/decrypt"
@@ -29,12 +30,50 @@ func Apply(actions []manifest.Action, repoRoot string, dryRun bool) []Result {
 	var results []Result
 
 	for _, action := range actions {
-		sourcePath := filepath.Join(repoRoot, action.Source)
+		sourcePath, sourceErr := resolveRepoSourcePath(repoRoot, action.Source)
+		if sourceErr != nil {
+			results = append(results, Result{
+				Action: action,
+				Status: "error",
+				Error:  sourceErr,
+			})
+			continue
+		}
 		r := applyOne(action, sourcePath, dryRun)
 		results = append(results, r)
 	}
 
 	return results
+}
+
+func resolveRepoSourcePath(repoRoot, source string) (string, error) {
+	repoAbs, err := filepath.Abs(repoRoot)
+	if err != nil {
+		return "", wrapPathError("resolving repo root", repoRoot, err)
+	}
+
+	trimmed := strings.TrimSpace(source)
+	if trimmed == "" {
+		return "", errors.New("source path cannot be empty")
+	}
+
+	cleaned := filepath.Clean(filepath.FromSlash(trimmed))
+	if cleaned == "." || cleaned == ".." || filepath.IsAbs(cleaned) || strings.HasPrefix(filepath.ToSlash(cleaned), "../") {
+		return "", fmt.Errorf("source %q must stay within repo root", source)
+	}
+
+	sourcePath := filepath.Join(repoAbs, cleaned)
+	sourceAbs, err := filepath.Abs(sourcePath)
+	if err != nil {
+		return "", wrapPathError("resolving source path", sourcePath, err)
+	}
+
+	repoPrefix := repoAbs + string(filepath.Separator)
+	if sourceAbs != repoAbs && !strings.HasPrefix(sourceAbs, repoPrefix) {
+		return "", fmt.Errorf("source %q resolved outside repo root", source)
+	}
+
+	return sourceAbs, nil
 }
 
 func applyOne(action manifest.Action, sourcePath string, dryRun bool) Result {

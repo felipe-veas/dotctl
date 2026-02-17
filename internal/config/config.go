@@ -52,7 +52,12 @@ func DefaultPath() string {
 // Load reads the config from the given path.
 // Returns a zero Config and ErrNotFound if the file doesn't exist.
 func Load(path string) (*Config, error) {
-	data, err := os.ReadFile(path)
+	safePath, err := normalizeConfigPath(path)
+	if err != nil {
+		return nil, err
+	}
+
+	data, err := os.ReadFile(safePath)
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
 			return nil, ErrNotFound
@@ -68,6 +73,28 @@ func Load(path string) (*Config, error) {
 	cfg.applyDefaults()
 
 	return &cfg, nil
+}
+
+func normalizeConfigPath(path string) (string, error) {
+	trimmed := strings.TrimSpace(path)
+	if trimmed == "" {
+		return "", errors.New("config path cannot be empty")
+	}
+
+	cleaned := filepath.Clean(trimmed)
+	if cleaned == "." {
+		return "", errors.New("config path cannot be empty")
+	}
+	if cleaned == ".." || strings.HasPrefix(filepath.ToSlash(cleaned), "../") {
+		return "", fmt.Errorf("config path cannot use parent traversal: %q", path)
+	}
+
+	abs, err := filepath.Abs(cleaned)
+	if err != nil {
+		return "", fmt.Errorf("resolving config path: %w", err)
+	}
+
+	return abs, nil
 }
 
 // Save writes the config to the given path, creating parent dirs as needed.

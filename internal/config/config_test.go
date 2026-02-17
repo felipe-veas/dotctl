@@ -4,6 +4,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 )
@@ -70,6 +71,16 @@ func TestLoadInvalidYAML(t *testing.T) {
 	_, err := Load(path)
 	if err == nil {
 		t.Fatal("expected error for invalid YAML")
+	}
+}
+
+func TestLoadRejectsParentTraversalPath(t *testing.T) {
+	_, err := Load("../config.yaml")
+	if err == nil {
+		t.Fatal("expected error for parent traversal path")
+	}
+	if !strings.Contains(err.Error(), "parent traversal") {
+		t.Fatalf("unexpected error: %v", err)
 	}
 }
 
