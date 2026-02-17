@@ -2,6 +2,15 @@
 
 <!-- markdownlint-disable MD024 -->
 
+## [1.12.1](https://github.com/felipe-veas/dotctl/compare/v1.12.0...v1.12.1) (2026-02-17)
+
+
+### Bug Fixes
+
+* **config:** prevent path traversal in config loading ([9db769a](https://github.com/felipe-veas/dotctl/commit/9db769ad17e2eb6f5c3f902f912d88ccb04d285b))
+* **linker:** prevent path traversal in source validation ([51dda34](https://github.com/felipe-veas/dotctl/commit/51dda34cf4f3162374b8c625911a4f932333c1a9))
+* prevent path traversal in config and linker ([b512814](https://github.com/felipe-veas/dotctl/commit/b512814886898a1fb85c2326a7a73ad085806400))
+
 ## [1.12.0](https://github.com/felipe-veas/dotctl/compare/v1.11.1...v1.12.0) (2026-02-14)
 
 ### Features
