@@ -90,7 +90,7 @@ jobs:
           go-version-file: 'go.mod'
 
       - name: Set up GoReleaser
-        uses: goreleaser/goreleaser-action@e435ccd777264be153ace6237001ef4d979d3a7a # v6
+        uses: goreleaser/goreleaser-action@ec59f474b9834571250b370d4735c50f8e2d1e29 # v7.0.0
         with:
           distribution: goreleaser
           version: latest
@@ -132,7 +132,7 @@ jobs:
         run: ./scripts/build-tray-linux.sh
 
       - name: Upload tray artifact
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: dotctl-tray-linux-${{ matrix.arch }}
           path: bin/dotctl-tray
