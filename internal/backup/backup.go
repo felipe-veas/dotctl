@@ -72,7 +72,8 @@ func Create(targetPath string) (string, error) {
 		return "", fmt.Errorf("stat %q: %w", targetPath, err)
 	}
 
-	backupBase := filepath.Join(platform.BackupDir(), currentSnapshotName())
+	snapshot := currentSnapshotName()
+	backupBase := filepath.Join(platform.BackupDir(), snapshot)
 
 	backupPath, err := buildBackupPath(backupBase, targetPath)
 	if err != nil {
@@ -92,6 +93,14 @@ func Create(targetPath string) (string, error) {
 		if err := os.Symlink(linkTarget, backupPath); err != nil {
 			return "", fmt.Errorf("creating backup symlink: %w", err)
 		}
+		if err := appendSnapshotMetadata(snapshot, snapshotMetadataEntry{
+			Target:     metadataTargetPath(targetPath),
+			BackupPath: backupPath,
+			Kind:       "symlink",
+			Mode:       info.Mode().String(),
+		}); err != nil {
+			return "", fmt.Errorf("recording backup metadata: %w", err)
+		}
 		return backupPath, nil
 	}
 
@@ -99,11 +108,27 @@ func Create(targetPath string) (string, error) {
 		if err := copyDir(targetPath, backupPath); err != nil {
 			return "", fmt.Errorf("backing up dir %q: %w", targetPath, err)
 		}
+		if err := appendSnapshotMetadata(snapshot, snapshotMetadataEntry{
+			Target:     metadataTargetPath(targetPath),
+			BackupPath: backupPath,
+			Kind:       "dir",
+			Mode:       info.Mode().String(),
+		}); err != nil {
+			return "", fmt.Errorf("recording backup metadata: %w", err)
+		}
 		return backupPath, nil
 	}
 
 	if err := copyFile(targetPath, backupPath, info.Mode()); err != nil {
 		return "", fmt.Errorf("backing up file %q: %w", targetPath, err)
+	}
+	if err := appendSnapshotMetadata(snapshot, snapshotMetadataEntry{
+		Target:     metadataTargetPath(targetPath),
+		BackupPath: backupPath,
+		Kind:       "file",
+		Mode:       info.Mode().String(),
+	}); err != nil {
+		return "", fmt.Errorf("recording backup metadata: %w", err)
 	}
 
 	return backupPath, nil
@@ -170,7 +195,16 @@ func SnapshotEntries(snapshot string) ([]Entry, error) {
 		return nil, err
 	}
 
-	targetsRoot := filepath.Join(platform.BackupDir(), snapshot, "targets")
+	snapshotDir := filepath.Join(platform.BackupDir(), snapshot)
+	entries, err := snapshotEntriesFromMetadata(snapshot, snapshotDir)
+	if err == nil {
+		return entries, nil
+	}
+	if !errors.Is(err, errSnapshotMetadataNotFound) {
+		return nil, err
+	}
+
+	targetsRoot := filepath.Join(snapshotDir, "targets")
 	if _, err := os.Stat(targetsRoot); err != nil {
 		if os.IsNotExist(err) {
 			return nil, fmt.Errorf("snapshot %q not found", snapshot)
@@ -178,8 +212,8 @@ func SnapshotEntries(snapshot string) ([]Entry, error) {
 		return nil, fmt.Errorf("stat snapshot targets %q: %w", targetsRoot, err)
 	}
 
-	entries := make([]Entry, 0)
-	err := filepath.WalkDir(targetsRoot, func(path string, d fs.DirEntry, walkErr error) error {
+	legacyEntries := make([]Entry, 0)
+	err = filepath.WalkDir(targetsRoot, func(path string, d fs.DirEntry, walkErr error) error {
 		if walkErr != nil {
 			return walkErr
 		}
@@ -198,7 +232,7 @@ func SnapshotEntries(snapshot string) ([]Entry, error) {
 				return fmt.Errorf("reading backup dir %q: %w", path, err)
 			}
 			if len(children) == 0 {
-				entries = append(entries, Entry{
+				legacyEntries = append(legacyEntries, Entry{
 					Snapshot:   snapshot,
 					BackupPath: path,
 					Target:     targetFromBackupPath(targetsRoot, path),
@@ -213,7 +247,7 @@ func SnapshotEntries(snapshot string) ([]Entry, error) {
 			kind = "symlink"
 		}
 
-		entries = append(entries, Entry{
+		legacyEntries = append(legacyEntries, Entry{
 			Snapshot:   snapshot,
 			BackupPath: path,
 			Target:     targetFromBackupPath(targetsRoot, path),
@@ -225,7 +259,7 @@ func SnapshotEntries(snapshot string) ([]Entry, error) {
 		return nil, err
 	}
 
-	return entries, nil
+	return legacyEntries, nil
 }
 
 // RestoreSnapshot restores a snapshot into the current user's home directory.
