@@ -12,25 +12,21 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/felipe-veas/dotctl/internal/decrypt"
 	"github.com/felipe-veas/dotctl/internal/manifest"
 	"github.com/felipe-veas/dotctl/internal/output"
 	"github.com/spf13/cobra"
 )
 
 type diffEntry struct {
-	Source  string `json:"source"`
-	Target  string `json:"target"`
-	Mode    string `json:"mode"`
-	Decrypt bool   `json:"decrypt,omitempty"`
-	Status  string `json:"status"` // ok, changed, missing, drift, error
-	Reason  string `json:"reason,omitempty"`
-	Diff    string `json:"diff,omitempty"`
+	Source string `json:"source"`
+	Target string `json:"target"`
+	Mode   string `json:"mode"`
+	Status string `json:"status"` // ok, changed, missing, drift, error
+	Reason string `json:"reason,omitempty"`
+	Diff   string `json:"diff,omitempty"`
 }
 
 type diffResult struct {
-	Profile  string      `json:"profile"`
-	RepoName string      `json:"repo_name,omitempty"`
 	RepoPath string      `json:"repo_path"`
 	Entries  []diffEntry `json:"entries"`
 	Summary  struct {
@@ -71,13 +67,7 @@ func runDiff(showDetails bool) error {
 		return err
 	}
 
-	if _, decryptCount, decryptErr := detectDecryptToolForActions(state.Actions); decryptCount > 0 && decryptErr != nil {
-		return decryptErr
-	}
-
 	result := diffResult{
-		Profile:  cfg.Profile,
-		RepoName: cfg.Repo.Name,
 		RepoPath: cfg.Repo.Path,
 		Entries:  make([]diffEntry, 0, len(state.Actions)),
 	}
@@ -106,11 +96,7 @@ func runDiff(showDetails bool) error {
 		return out.JSON(result)
 	}
 
-	if result.RepoName != "" {
-		out.Field("Repo name", result.RepoName)
-	}
 	out.Field("Repo path", result.RepoPath)
-	out.Field("Profile", result.Profile)
 
 	for _, entry := range result.Entries {
 		switch entry.Status {
@@ -149,11 +135,10 @@ func runDiff(showDetails bool) error {
 
 func diffAction(action manifest.Action, sourcePath string, showDetails bool) diffEntry {
 	entry := diffEntry{
-		Source:  action.Source,
-		Target:  action.Target,
-		Mode:    action.Mode,
-		Decrypt: action.Decrypt,
-		Status:  "ok",
+		Source: action.Source,
+		Target: action.Target,
+		Mode:   action.Mode,
+		Status: "ok",
 	}
 
 	if _, err := os.Stat(sourcePath); err != nil {
@@ -243,7 +228,7 @@ func diffCopy(entry diffEntry, action manifest.Action, sourcePath string, showDe
 		return entry
 	}
 
-	sourceData, sourceLabel, readErr := readDiffSource(action, sourcePath)
+	sourceData, sourceLabel, readErr := readDiffSource(sourcePath)
 	if readErr != nil {
 		entry.Status = "error"
 		entry.Reason = readErr.Error()
@@ -324,15 +309,7 @@ func diffCopyDirectory(entry diffEntry, sourceDir string) diffEntry {
 	return entry
 }
 
-func readDiffSource(action manifest.Action, sourcePath string) ([]byte, string, error) {
-	if action.Decrypt {
-		data, _, err := decrypt.DecryptFile(sourcePath)
-		if err != nil {
-			return nil, "", fmt.Errorf("decrypting source: %w", err)
-		}
-		return data, sourcePath + " (decrypted)", nil
-	}
-
+func readDiffSource(sourcePath string) ([]byte, string, error) {
 	data, err := os.ReadFile(sourcePath)
 	if err != nil {
 		return nil, "", fmt.Errorf("reading source file: %w", err)

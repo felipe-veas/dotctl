@@ -46,8 +46,10 @@ changelog:
       - '^docs:'
       - '^test:'
 
-brews:
+homebrew_casks:
   - name: dotctl
+    binaries:
+      - dotctl
     repository:
       owner: felipe-veas
       name: homebrew-tap
@@ -59,13 +61,20 @@ brews:
     commit_author:
       name: goreleaserbot
       email: bot@goreleaser.com
-    directory: Formula
     homepage: "https://github.com/felipe-veas/dotctl"
     description: "Sync dotfiles across machines (macOS + Linux)"
-    license: "MIT"
     skip_upload: auto
-    test: |
-      system "#{bin}/dotctl version"
+    hooks:
+      post:
+        install: |
+          if OS.mac?
+            system_command "/usr/bin/xattr",
+              args: [
+                "-dr",
+                "com.apple.quarantine",
+                "#{staged_path}/dotctl",
+              ]
+          end
 
 nfpms:
   - id: linux-packages

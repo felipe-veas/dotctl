@@ -8,17 +8,15 @@ type Manifest struct {
 	Vars    map[string]string `yaml:"vars"`
 	Files   []FileEntry       `yaml:"files"`
 	Ignore  []string          `yaml:"ignore"`
-	Hooks   HookSet           `yaml:"hooks"`
 }
 
 // FileEntry represents a single file mapping in the manifest.
 type FileEntry struct {
-	Source  string    `yaml:"source"`
+	Source string    `yaml:"source"`
 	Target string    `yaml:"target"`
-	Mode   string    `yaml:"mode"`    // "symlink" (default) or "copy"
+	Mode   string    `yaml:"mode"` // "symlink" (default) or "copy"
 	When   Condition `yaml:"when"`
-	Decrypt bool     `yaml:"decrypt"`
-	Backup  *bool    `yaml:"backup"` // nil = default true
+	Backup *bool     `yaml:"backup"` // nil = default true
 }
 
 // ShouldBackup returns whether this entry should create a backup before overwriting.
@@ -37,24 +35,9 @@ func (f FileEntry) LinkMode() string {
 	return f.Mode
 }
 
-// Condition represents when-filters for OS and profile.
+// Condition represents when-filters for OS.
 type Condition struct {
-	OS      StringOrSlice `yaml:"os"`
-	Profile StringOrSlice `yaml:"profile"`
-}
-
-// HookSet contains the different hook phases.
-type HookSet struct {
-	PreSync   []Hook `yaml:"pre_sync"`
-	PostSync  []Hook `yaml:"post_sync"`
-	Bootstrap []Hook `yaml:"bootstrap"`
-}
-
-// Hook represents a command to run at a specific phase.
-type Hook struct {
-	Command     string    `yaml:"command"`
-	Description string    `yaml:"description"`
-	When        Condition `yaml:"when"`
+	OS StringOrSlice `yaml:"os"`
 }
 
 // StringOrSlice allows YAML values like "darwin" or ["darwin", "linux"].

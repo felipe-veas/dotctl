@@ -10,7 +10,6 @@ import (
 	"strings"
 
 	"github.com/felipe-veas/dotctl/internal/backup"
-	"github.com/felipe-veas/dotctl/internal/decrypt"
 	"github.com/felipe-veas/dotctl/internal/manifest"
 )
 
@@ -19,7 +18,6 @@ type Result struct {
 	Action     manifest.Action
 	Status     string // "created", "already_linked", "backed_up", "copied", "skipped", "error"
 	BackupPath string // non-empty if a backup was created
-	Decrypted  bool
 	Error      error
 }
 
@@ -226,10 +224,6 @@ func doCopy(action manifest.Action, sourcePath, targetDir, backupPath string) Re
 		return Result{Action: action, Status: "error", BackupPath: backupPath, Error: wrapPathError("reading source", sourcePath, err)}
 	}
 
-	if action.Decrypt {
-		return doDecryptCopy(action, sourcePath, srcInfo, backupPath)
-	}
-
 	if srcInfo.IsDir() {
 		if err := copyDir(sourcePath, action.Target); err != nil {
 			return Result{Action: action, Status: "error", BackupPath: backupPath, Error: wrapPathError("copying directory", action.Target, err)}
@@ -245,53 +239,6 @@ func doCopy(action manifest.Action, sourcePath, targetDir, backupPath string) Re
 		status = "backed_up"
 	}
 	return Result{Action: action, Status: status, BackupPath: backupPath}
-}
-
-func doDecryptCopy(action manifest.Action, sourcePath string, srcInfo fs.FileInfo, backupPath string) Result {
-	if srcInfo.IsDir() {
-		return Result{
-			Action:     action,
-			Status:     "error",
-			BackupPath: backupPath,
-			Error:      fmt.Errorf("decrypt=true is not supported for directories: %s", action.Source),
-		}
-	}
-
-	plaintext, _, err := decrypt.DecryptFile(sourcePath)
-	if err != nil {
-		return Result{
-			Action:     action,
-			Status:     "error",
-			BackupPath: backupPath,
-			Error:      wrapPathError("decrypting source", sourcePath, err),
-		}
-	}
-
-	// Decrypted files should never be world-readable.
-	perm := srcInfo.Mode().Perm()
-	if perm > 0o600 {
-		perm = 0o600
-	}
-	if err := os.WriteFile(action.Target, plaintext, perm); err != nil {
-		return Result{
-			Action:     action,
-			Status:     "error",
-			BackupPath: backupPath,
-			Error:      wrapPathError("writing decrypted file", action.Target, err),
-		}
-	}
-
-	status := "copied"
-	if backupPath != "" {
-		status = "backed_up"
-	}
-
-	return Result{
-		Action:     action,
-		Status:     status,
-		BackupPath: backupPath,
-		Decrypted:  true,
-	}
 }
 
 func copyFile(src, dst string, perm fs.FileMode) (err error) {
@@ -488,39 +435,5 @@ func rollbackOne(result Result) RollbackResult {
 }
 
 func restoreFromBackup(backupPath, target string) error {
-	if err := os.RemoveAll(target); err != nil && !os.IsNotExist(err) {
-		return fmt.Errorf("removing target before restore: %w", err)
-	}
-
-	info, err := os.Lstat(backupPath)
-	if err != nil {
-		return fmt.Errorf("stat backup %q: %w", backupPath, err)
-	}
-
-	if err := os.MkdirAll(filepath.Dir(target), 0o755); err != nil {
-		return fmt.Errorf("creating target parent dir: %w", err)
-	}
-
-	if info.Mode()&os.ModeSymlink != 0 {
-		dest, readErr := os.Readlink(backupPath)
-		if readErr != nil {
-			return fmt.Errorf("reading backup symlink: %w", readErr)
-		}
-		if err := os.Symlink(dest, target); err != nil {
-			return fmt.Errorf("restoring symlink: %w", err)
-		}
-		return nil
-	}
-
-	if info.IsDir() {
-		if err := copyDir(backupPath, target); err != nil {
-			return fmt.Errorf("restoring directory: %w", err)
-		}
-		return nil
-	}
-
-	if err := copyFile(backupPath, target, info.Mode()); err != nil {
-		return fmt.Errorf("restoring file: %w", err)
-	}
-	return nil
+	return backup.RestorePath(backupPath, target)
 }

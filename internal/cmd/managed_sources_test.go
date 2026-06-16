@@ -234,3 +234,33 @@ func TestBackfillMissingSourcesFromTargetsDryRun(t *testing.T) {
 		t.Fatalf("expected no source file in dry-run, stat err = %v", err)
 	}
 }
+
+func TestBackfillMissingSourcesFromTargetsDoesNotPersistStateOnError(t *testing.T) {
+	repo := t.TempDir()
+	home := t.TempDir()
+
+	goodTarget := filepath.Join(home, ".zshrc")
+	if err := os.WriteFile(goodTarget, []byte("export Z=1\n"), 0o644); err != nil {
+		t.Fatalf("write good target: %v", err)
+	}
+
+	results, err := backfillMissingSourcesFromTargets(repo, []manifest.Action{
+		{
+			Source: "configs/zsh/.zshrc",
+			Target: goodTarget,
+			Mode:   "symlink",
+		},
+		{
+			Source: "configs/git/.gitconfig",
+			Target: filepath.Join(home, ".missing"),
+			Mode:   "symlink",
+		},
+	}, false)
+	if err == nil {
+		t.Fatalf("expected backfill error, got results=%+v", results)
+	}
+
+	if _, statErr := os.Stat(filepath.Join(repo, ".dotctl", "managed-sources.txt")); !os.IsNotExist(statErr) {
+		t.Fatalf("expected managed sources state to remain unwritten, stat err=%v", statErr)
+	}
+}

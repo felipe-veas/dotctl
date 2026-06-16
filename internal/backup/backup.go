@@ -1,11 +1,13 @@
 package backup
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"io/fs"
 	"os"
 	"path/filepath"
+	"regexp"
 	"sort"
 	"strings"
 	"sync"
@@ -18,6 +20,34 @@ var (
 	sessionMu       sync.Mutex
 	sessionSnapshot string
 )
+
+var restoreSuffixPattern = regexp.MustCompile(`~\d+$`)
+
+// Snapshot describes one backup snapshot on disk.
+type Snapshot struct {
+	Name      string    `json:"name"`
+	Path      string    `json:"path"`
+	CreatedAt time.Time `json:"created_at"`
+	Entries   int       `json:"entries"`
+}
+
+// Entry describes one restorable item inside a snapshot.
+type Entry struct {
+	Snapshot   string `json:"snapshot"`
+	BackupPath string `json:"backup_path"`
+	Target     string `json:"target"`
+	Kind       string `json:"kind"`
+}
+
+// RestoreResult describes the outcome of restoring one entry.
+type RestoreResult struct {
+	Snapshot   string `json:"snapshot"`
+	BackupPath string `json:"backup_path"`
+	Target     string `json:"target"`
+	Kind       string `json:"kind"`
+	Status     string `json:"status"`
+	Error      string `json:"error,omitempty"`
+}
 
 // BeginSession sets a shared backup snapshot for subsequent Create calls.
 // The returned function restores the previous session snapshot.
@@ -77,6 +107,219 @@ func Create(targetPath string) (string, error) {
 	}
 
 	return backupPath, nil
+}
+
+// List returns available snapshots newest first.
+func List() ([]Snapshot, error) {
+	base := platform.BackupDir()
+	entries, err := os.ReadDir(base)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return []Snapshot{}, nil
+		}
+		return nil, fmt.Errorf("reading backup dir %q: %w", base, err)
+	}
+
+	snapshots := make([]Snapshot, 0, len(entries))
+	for _, entry := range entries {
+		if !entry.IsDir() {
+			continue
+		}
+		name := entry.Name()
+		if err := validateSnapshotName(name); err != nil {
+			continue
+		}
+
+		path := filepath.Join(base, name)
+		targetsRoot := filepath.Join(path, "targets")
+		if info, statErr := os.Stat(targetsRoot); statErr != nil || !info.IsDir() {
+			continue
+		}
+
+		inspected, inspectErr := SnapshotEntries(name)
+		if inspectErr != nil {
+			return nil, inspectErr
+		}
+
+		info, err := entry.Info()
+		if err != nil {
+			return nil, fmt.Errorf("reading snapshot info %q: %w", name, err)
+		}
+
+		snapshots = append(snapshots, Snapshot{
+			Name:      name,
+			Path:      path,
+			CreatedAt: info.ModTime(),
+			Entries:   len(inspected),
+		})
+	}
+
+	sort.Slice(snapshots, func(i, j int) bool {
+		if snapshots[i].Name == snapshots[j].Name {
+			return snapshots[i].CreatedAt.After(snapshots[j].CreatedAt)
+		}
+		return snapshots[i].Name > snapshots[j].Name
+	})
+
+	return snapshots, nil
+}
+
+// SnapshotEntries returns the restoreable entries for a snapshot.
+func SnapshotEntries(snapshot string) ([]Entry, error) {
+	if err := validateSnapshotName(snapshot); err != nil {
+		return nil, err
+	}
+
+	targetsRoot := filepath.Join(platform.BackupDir(), snapshot, "targets")
+	if _, err := os.Stat(targetsRoot); err != nil {
+		if os.IsNotExist(err) {
+			return nil, fmt.Errorf("snapshot %q not found", snapshot)
+		}
+		return nil, fmt.Errorf("stat snapshot targets %q: %w", targetsRoot, err)
+	}
+
+	entries := make([]Entry, 0)
+	err := filepath.WalkDir(targetsRoot, func(path string, d fs.DirEntry, walkErr error) error {
+		if walkErr != nil {
+			return walkErr
+		}
+		if path == targetsRoot {
+			return nil
+		}
+
+		info, err := os.Lstat(path)
+		if err != nil {
+			return fmt.Errorf("stat backup entry %q: %w", path, err)
+		}
+
+		if info.IsDir() {
+			children, err := os.ReadDir(path)
+			if err != nil {
+				return fmt.Errorf("reading backup dir %q: %w", path, err)
+			}
+			if len(children) == 0 {
+				entries = append(entries, Entry{
+					Snapshot:   snapshot,
+					BackupPath: path,
+					Target:     targetFromBackupPath(targetsRoot, path),
+					Kind:       "dir",
+				})
+			}
+			return nil
+		}
+
+		kind := "file"
+		if info.Mode()&os.ModeSymlink != 0 {
+			kind = "symlink"
+		}
+
+		entries = append(entries, Entry{
+			Snapshot:   snapshot,
+			BackupPath: path,
+			Target:     targetFromBackupPath(targetsRoot, path),
+			Kind:       kind,
+		})
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	return entries, nil
+}
+
+// RestoreSnapshot restores a snapshot into the current user's home directory.
+func RestoreSnapshot(snapshot string, dryRun bool) ([]RestoreResult, error) {
+	entries, err := SnapshotEntries(snapshot)
+	if err != nil {
+		return nil, err
+	}
+
+	homeDir, err := os.UserHomeDir()
+	if err != nil {
+		return nil, fmt.Errorf("detecting home directory: %w", err)
+	}
+	homeAbs, err := filepath.Abs(filepath.Clean(homeDir))
+	if err != nil {
+		return nil, fmt.Errorf("resolving home directory: %w", err)
+	}
+
+	results := make([]RestoreResult, 0, len(entries))
+	var errs []error
+	for _, entry := range entries {
+		result := RestoreResult{
+			Snapshot:   entry.Snapshot,
+			BackupPath: entry.BackupPath,
+			Target:     entry.Target,
+			Kind:       entry.Kind,
+		}
+
+		if err := validateRestoreTarget(homeAbs, entry.Target); err != nil {
+			result.Status = "rejected"
+			result.Error = err.Error()
+			errs = append(errs, err)
+			results = append(results, result)
+			continue
+		}
+
+		if dryRun {
+			result.Status = "planned"
+			results = append(results, result)
+			continue
+		}
+
+		if err := RestorePath(entry.BackupPath, entry.Target); err != nil {
+			result.Status = "error"
+			result.Error = err.Error()
+			errs = append(errs, fmt.Errorf("restoring %s: %w", entry.Target, err))
+			results = append(results, result)
+			continue
+		}
+
+		result.Status = "restored"
+		results = append(results, result)
+	}
+
+	return results, errors.Join(errs...)
+}
+
+// RestorePath replaces target with the contents of backupPath.
+func RestorePath(backupPath, target string) error {
+	if err := os.RemoveAll(target); err != nil && !os.IsNotExist(err) {
+		return fmt.Errorf("removing target before restore: %w", err)
+	}
+
+	info, err := os.Lstat(backupPath)
+	if err != nil {
+		return fmt.Errorf("stat backup %q: %w", backupPath, err)
+	}
+
+	if err := os.MkdirAll(filepath.Dir(target), 0o755); err != nil {
+		return fmt.Errorf("creating target parent dir: %w", err)
+	}
+
+	if info.IsDir() {
+		if err := copyDir(backupPath, target); err != nil {
+			return fmt.Errorf("restoring directory: %w", err)
+		}
+		return nil
+	}
+
+	if info.Mode()&os.ModeSymlink != 0 {
+		dest, readErr := os.Readlink(backupPath)
+		if readErr != nil {
+			return fmt.Errorf("reading backup symlink: %w", readErr)
+		}
+		if err := os.Symlink(dest, target); err != nil {
+			return fmt.Errorf("restoring symlink: %w", err)
+		}
+		return nil
+	}
+
+	if err := copyFile(backupPath, target, info.Mode()); err != nil {
+		return fmt.Errorf("restoring file: %w", err)
+	}
+	return nil
 }
 
 func currentSnapshotName() string {
@@ -235,4 +478,66 @@ func copyDir(src, dst string) error {
 
 		return copyFile(path, target, info.Mode())
 	})
+}
+
+func validateSnapshotName(name string) error {
+	trimmed := strings.TrimSpace(name)
+	if trimmed == "" {
+		return fmt.Errorf("snapshot name is required")
+	}
+	if trimmed != name {
+		return fmt.Errorf("snapshot name must not contain leading or trailing whitespace")
+	}
+	if filepath.IsAbs(trimmed) {
+		return fmt.Errorf("snapshot name must be relative")
+	}
+	if vol := filepath.VolumeName(trimmed); vol != "" {
+		return fmt.Errorf("snapshot name must not include a volume")
+	}
+	if trimmed == "." || trimmed == ".." {
+		return fmt.Errorf("snapshot name is invalid")
+	}
+	if strings.Contains(trimmed, string(filepath.Separator)) {
+		return fmt.Errorf("snapshot name must not contain path separators")
+	}
+	if filepath.Clean(trimmed) != trimmed {
+		return fmt.Errorf("snapshot name must not contain path traversal")
+	}
+	return nil
+}
+
+func targetFromBackupPath(targetsRoot, backupPath string) string {
+	rel, err := filepath.Rel(targetsRoot, backupPath)
+	if err != nil {
+		return string(filepath.Separator)
+	}
+	parts := strings.Split(rel, string(filepath.Separator))
+	if len(parts) > 0 {
+		last := len(parts) - 1
+		parts[last] = restoreSuffixPattern.ReplaceAllString(parts[last], "")
+	}
+	cleaned := filepath.Join(parts...)
+	if cleaned == "." || cleaned == "" {
+		return string(filepath.Separator)
+	}
+	return filepath.Join(string(filepath.Separator), cleaned)
+}
+
+func validateRestoreTarget(homeAbs, target string) error {
+	targetAbs, err := filepath.Abs(filepath.Clean(target))
+	if err != nil {
+		return fmt.Errorf("resolving restore target: %w", err)
+	}
+
+	rel, err := filepath.Rel(homeAbs, targetAbs)
+	if err != nil {
+		return fmt.Errorf("checking restore target containment: %w", err)
+	}
+	if rel == "." {
+		return fmt.Errorf("restore target must not be the home directory itself")
+	}
+	if rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) || filepath.IsAbs(rel) {
+		return fmt.Errorf("restore target %s must stay under home directory %s", targetAbs, homeAbs)
+	}
+	return nil
 }

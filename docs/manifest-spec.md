@@ -21,24 +21,13 @@ files:
   - source: configs/git/config
     target: "{{ .config_home }}/git/config"
 
-  - source: configs/app/config.enc.yaml
+  - source: configs/app/config.yaml
     target: "{{ .config_home }}/app/config.yaml"
     mode: copy
-    decrypt: true
 
 ignore:
   - ".env"
   - "*.pem"
-
-hooks:
-  pre_sync:
-    - command: ./scripts/pre-sync.sh
-  post_sync:
-    - command: ./scripts/post-sync.sh
-  bootstrap:
-    - command: ./scripts/bootstrap.sh
-      when:
-        os: darwin
 ```
 
 ## Top-level keys
@@ -47,16 +36,13 @@ hooks:
 - `vars`: reusable variables for templated targets.
 - `files`: file or directory rules.
 - `ignore`: source patterns that should not be applied.
-- `hooks`: lifecycle hooks (`pre_sync`, `post_sync`, `bootstrap`).
 
 ## `files[]` fields
 
 - `source` (required): relative path inside repo.
-- `target` (required): destination path in local machine.
+- `target` (required): destination path on the local machine. It may use `~`, an absolute path, or a template, but it must resolve strictly under the user's home directory.
 - `mode`: `symlink` (default) or `copy`.
 - `when.os`: `darwin`, `linux`, or list.
-- `when.profile`: profile name(s) to include.
-- `decrypt`: valid only with `mode: copy`; source name must contain `.enc.`.
 - `backup`: `true` by default.
 
 ## Template variables in `target`
@@ -66,18 +52,14 @@ Built-in:
 - `home`
 - `os`
 - `arch`
-- `profile`
 - `hostname`
 
 User-defined:
 
 - any key declared under `vars`.
 
-## Hook execution
+## Target path safety
 
-Hooks run with `/bin/sh -c` in the repository directory.
+`dotctl` rejects manifest targets that are relative, outside `$HOME`, equal to `$HOME`, or escape `$HOME` through parent traversal such as `~/../outside`.
 
-Environment variables:
-
-- `DOTCTL_HOOK_PHASE`
-- `DOTCTL_HOOK_REPO`
+Sensitive-looking targets under credential-heavy paths such as `.ssh`, `.gnupg`, `.kube`, `.aws`, `.config/gh`, `.config/gcloud`, and `.env` files are allowed but reported as warnings.

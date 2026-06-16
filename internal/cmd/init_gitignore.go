@@ -23,12 +23,6 @@ var defaultInitGitignorePatterns = []string{
 	"*credentials*",
 	"*secret*",
 
-	// Keep common encrypted config folders trackable even with broad patterns above.
-	"!configs/secrets/",
-	"!configs/secrets/**",
-	"!configs/credentials/",
-	"!configs/credentials/**",
-
 	// Common dotfiles runtime/plugin content that should not be versioned.
 	"configs/tmux/plugins/",
 }

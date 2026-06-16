@@ -2,8 +2,6 @@ package manifest
 
 import (
 	"testing"
-
-	"github.com/felipe-veas/dotctl/internal/profile"
 )
 
 func TestResolveFiltersByOS(t *testing.T) {
@@ -15,8 +13,8 @@ func TestResolveFiltersByOS(t *testing.T) {
 		},
 	}
 
-	ctx := profile.Context{OS: "darwin", Arch: "arm64", Profile: "test", Home: "/home/test"}
-	actions, skipped, err := Resolve(m, ctx, "/repo")
+	ctx := Context{OS: "darwin", Arch: "arm64", Home: "/home/test"}
+	actions, skipped, err := Resolve(m, ctx)
 	if err != nil {
 		t.Fatalf("Resolve: %v", err)
 	}
@@ -32,29 +30,6 @@ func TestResolveFiltersByOS(t *testing.T) {
 	}
 }
 
-func TestResolveFiltersByProfile(t *testing.T) {
-	m := &Manifest{
-		Files: []FileEntry{
-			{Source: "a", Target: "~/.a"},
-			{Source: "b", Target: "~/.b", When: Condition{Profile: StringOrSlice{"macstudio", "laptop"}}},
-			{Source: "c", Target: "~/.c", When: Condition{Profile: StringOrSlice{"devserver"}}},
-		},
-	}
-
-	ctx := profile.Context{OS: "darwin", Arch: "arm64", Profile: "macstudio", Home: "/home/test"}
-	actions, skipped, err := Resolve(m, ctx, "/repo")
-	if err != nil {
-		t.Fatalf("Resolve: %v", err)
-	}
-
-	if len(actions) != 2 {
-		t.Errorf("actions = %d, want 2", len(actions))
-	}
-	if len(skipped) != 1 {
-		t.Errorf("skipped = %d, want 1", len(skipped))
-	}
-}
-
 func TestResolveCombinedConditions(t *testing.T) {
 	m := &Manifest{
 		Files: []FileEntry{
@@ -62,16 +37,14 @@ func TestResolveCombinedConditions(t *testing.T) {
 				Source: "a",
 				Target: "~/.a",
 				When: Condition{
-					OS:      StringOrSlice{"darwin"},
-					Profile: StringOrSlice{"macstudio"},
+					OS: StringOrSlice{"darwin"},
 				},
 			},
 		},
 	}
 
-	// Both match
-	ctx := profile.Context{OS: "darwin", Profile: "macstudio", Home: "/home/test"}
-	actions, _, err := Resolve(m, ctx, "/repo")
+	ctx := Context{OS: "darwin", Home: "/home/test"}
+	actions, _, err := Resolve(m, ctx)
 	if err != nil {
 		t.Fatalf("Resolve: %v", err)
 	}
@@ -81,23 +54,12 @@ func TestResolveCombinedConditions(t *testing.T) {
 
 	// OS doesn't match
 	ctx.OS = "linux"
-	actions, _, err = Resolve(m, ctx, "/repo")
+	actions, _, err = Resolve(m, ctx)
 	if err != nil {
 		t.Fatalf("Resolve: %v", err)
 	}
 	if len(actions) != 0 {
 		t.Errorf("OS mismatch: actions = %d, want 0", len(actions))
-	}
-
-	// Profile doesn't match
-	ctx.OS = "darwin"
-	ctx.Profile = "laptop"
-	actions, _, err = Resolve(m, ctx, "/repo")
-	if err != nil {
-		t.Fatalf("Resolve: %v", err)
-	}
-	if len(actions) != 0 {
-		t.Errorf("profile mismatch: actions = %d, want 0", len(actions))
 	}
 }
 
@@ -111,8 +73,8 @@ func TestResolveWithVars(t *testing.T) {
 		},
 	}
 
-	ctx := profile.Context{OS: "darwin", Profile: "test", Home: "/Users/me"}
-	actions, _, err := Resolve(m, ctx, "/repo")
+	ctx := Context{OS: "darwin", Home: "/Users/me"}
+	actions, _, err := Resolve(m, ctx)
 	if err != nil {
 		t.Fatalf("Resolve: %v", err)
 	}
@@ -129,12 +91,12 @@ func TestResolveDefaultMode(t *testing.T) {
 	m := &Manifest{
 		Files: []FileEntry{
 			{Source: "a", Target: "~/.a"},
-			{Source: "b", Target: "~/.b", Mode: "copy", Decrypt: true},
+			{Source: "b", Target: "~/.b", Mode: "copy"},
 		},
 	}
 
-	ctx := profile.Context{OS: "darwin", Profile: "test", Home: "/home/test"}
-	actions, _, err := Resolve(m, ctx, "/repo")
+	ctx := Context{OS: "darwin", Home: "/home/test"}
+	actions, _, err := Resolve(m, ctx)
 	if err != nil {
 		t.Fatalf("Resolve: %v", err)
 	}
@@ -144,24 +106,6 @@ func TestResolveDefaultMode(t *testing.T) {
 	}
 	if actions[1].Mode != "copy" {
 		t.Errorf("explicit mode = %q, want %q", actions[1].Mode, "copy")
-	}
-	if !actions[1].Decrypt {
-		t.Errorf("decrypt = %v, want true", actions[1].Decrypt)
-	}
-}
-
-func TestResolveHooks(t *testing.T) {
-	hooks := []Hook{
-		{Command: "brew bundle", When: Condition{OS: StringOrSlice{"darwin"}}},
-		{Command: "apt update", When: Condition{OS: StringOrSlice{"linux"}}},
-		{Command: "echo hello"},
-	}
-
-	ctx := profile.Context{OS: "darwin", Profile: "test"}
-	result := ResolveHooks(hooks, ctx)
-
-	if len(result) != 2 {
-		t.Errorf("hooks = %d, want 2 (brew bundle + echo hello)", len(result))
 	}
 }
 
@@ -175,8 +119,8 @@ func TestResolveSkipsIgnoredSources(t *testing.T) {
 		},
 	}
 
-	ctx := profile.Context{OS: "darwin", Profile: "test", Home: "/home/test"}
-	actions, skipped, err := Resolve(m, ctx, "/repo")
+	ctx := Context{OS: "darwin", Home: "/home/test"}
+	actions, skipped, err := Resolve(m, ctx)
 	if err != nil {
 		t.Fatalf("Resolve: %v", err)
 	}
@@ -201,8 +145,8 @@ func TestResolveIgnorePatternMatchesFullPath(t *testing.T) {
 		},
 	}
 
-	ctx := profile.Context{OS: "linux", Profile: "server", Home: "/home/test"}
-	actions, skipped, err := Resolve(m, ctx, "/repo")
+	ctx := Context{OS: "linux", Home: "/home/test"}
+	actions, skipped, err := Resolve(m, ctx)
 	if err != nil {
 		t.Fatalf("Resolve: %v", err)
 	}
@@ -224,10 +168,24 @@ func TestResolveRejectsSourceTraversal(t *testing.T) {
 		},
 	}
 
-	ctx := profile.Context{OS: "linux", Profile: "server", Home: "/home/test"}
-	_, _, err := Resolve(m, ctx, "/repo")
+	ctx := Context{OS: "linux", Home: "/home/test"}
+	_, _, err := Resolve(m, ctx)
 	if err == nil {
 		t.Fatal("expected error for source path traversal")
+	}
+}
+
+func TestResolveRejectsTargetOutsideHome(t *testing.T) {
+	m := &Manifest{
+		Files: []FileEntry{
+			{Source: "configs/zsh/.zshrc", Target: "/etc/passwd"},
+		},
+	}
+
+	ctx := Context{OS: "linux", Home: "/Users/test"}
+	_, _, err := Resolve(m, ctx)
+	if err == nil {
+		t.Fatal("expected error for target outside home")
 	}
 }
 

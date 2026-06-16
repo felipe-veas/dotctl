@@ -28,7 +28,6 @@ func TestCLIInitIntegration(t *testing.T) {
 	_, err := executeCLI(t,
 		"init",
 		"--repo", env.remotePath,
-		"--profile", "devserver",
 		"--path", env.clonePath,
 		"--config", env.configPath,
 	)
@@ -43,9 +42,6 @@ func TestCLIInitIntegration(t *testing.T) {
 	cfg, err := config.Load(env.configPath)
 	if err != nil {
 		t.Fatalf("loading config: %v", err)
-	}
-	if cfg.Profile != "devserver" {
-		t.Fatalf("profile = %q, want devserver", cfg.Profile)
 	}
 	if cfg.Repo.Path != env.clonePath {
 		t.Fatalf("repo.path = %q, want %q", cfg.Repo.Path, env.clonePath)
@@ -168,189 +164,6 @@ func TestCLISyncIntegration(t *testing.T) {
 	}
 }
 
-func TestCLIBootstrapIntegration(t *testing.T) {
-	requireGit(t)
-	env := setupCLIIntegration(t, false)
-	initForIntegration(t, env)
-
-	manifestBody := "version: 1\nfiles:\n  - source: configs/zsh/.zshrc\n    target: ~/.zshrc\nhooks:\n  bootstrap:\n    - command: printf bootstrap-ok > bootstrap.marker\n"
-	if err := os.WriteFile(filepath.Join(env.clonePath, "manifest.yaml"), []byte(manifestBody), 0o644); err != nil {
-		t.Fatalf("write manifest with bootstrap hook: %v", err)
-	}
-
-	raw, err := executeCLI(t, "bootstrap", "--config", env.configPath, "--json")
-	if err != nil {
-		t.Fatalf("bootstrap failed: %v", err)
-	}
-
-	var response struct {
-		Hooks []struct {
-			Status string `json:"status"`
-		} `json:"hooks"`
-	}
-	if err := json.Unmarshal([]byte(raw), &response); err != nil {
-		t.Fatalf("parse bootstrap json: %v\nraw: %s", err, raw)
-	}
-	if len(response.Hooks) != 1 {
-		t.Fatalf("hooks = %d, want 1", len(response.Hooks))
-	}
-	if response.Hooks[0].Status != "ok" {
-		t.Fatalf("hook status = %q, want ok", response.Hooks[0].Status)
-	}
-
-	markerPath := filepath.Join(env.clonePath, "bootstrap.marker")
-	data, err := os.ReadFile(markerPath)
-	if err != nil {
-		t.Fatalf("read bootstrap marker: %v", err)
-	}
-	if strings.TrimSpace(string(data)) != "bootstrap-ok" {
-		t.Fatalf("marker content = %q, want bootstrap-ok", strings.TrimSpace(string(data)))
-	}
-}
-
-func TestCLIBootstrapDryRunIntegration(t *testing.T) {
-	requireGit(t)
-	env := setupCLIIntegration(t, false)
-	initForIntegration(t, env)
-
-	manifestBody := "version: 1\nfiles:\n  - source: configs/zsh/.zshrc\n    target: ~/.zshrc\nhooks:\n  bootstrap:\n    - command: printf should-not-run > dry-run.marker\n"
-	if err := os.WriteFile(filepath.Join(env.clonePath, "manifest.yaml"), []byte(manifestBody), 0o644); err != nil {
-		t.Fatalf("write manifest with bootstrap hook: %v", err)
-	}
-
-	raw, err := executeCLI(t, "bootstrap", "--config", env.configPath, "--dry-run", "--json")
-	if err != nil {
-		t.Fatalf("bootstrap dry-run failed: %v", err)
-	}
-
-	var response struct {
-		Hooks []struct {
-			Status string `json:"status"`
-		} `json:"hooks"`
-	}
-	if err := json.Unmarshal([]byte(raw), &response); err != nil {
-		t.Fatalf("parse bootstrap dry-run json: %v\nraw: %s", err, raw)
-	}
-	if len(response.Hooks) != 1 {
-		t.Fatalf("hooks = %d, want 1", len(response.Hooks))
-	}
-	if response.Hooks[0].Status != "would_run" {
-		t.Fatalf("hook status = %q, want would_run", response.Hooks[0].Status)
-	}
-
-	if _, err := os.Stat(filepath.Join(env.clonePath, "dry-run.marker")); err == nil {
-		t.Fatal("dry-run marker was created, expected no file")
-	} else if !os.IsNotExist(err) {
-		t.Fatalf("stat dry-run marker: %v", err)
-	}
-}
-
-func TestCLISyncRunsHooksIntegration(t *testing.T) {
-	requireGit(t)
-	env := setupCLIIntegration(t, false)
-	initForIntegration(t, env)
-
-	manifestBody := "version: 1\nfiles:\n  - source: configs/zsh/.zshrc\n    target: ~/.zshrc\nhooks:\n  pre_sync:\n    - command: printf pre > pre-sync.marker\n  post_sync:\n    - command: printf post > post-sync.marker\n"
-	if err := os.WriteFile(filepath.Join(env.clonePath, "manifest.yaml"), []byte(manifestBody), 0o644); err != nil {
-		t.Fatalf("write manifest with sync hooks: %v", err)
-	}
-	gitCmd(t, env.clonePath, "add", "manifest.yaml")
-	gitCmd(t, env.clonePath, "-c", "user.name=test", "-c", "user.email=test@example.com", "commit", "-m", "configure hooks for sync integration")
-	gitCmd(t, env.clonePath, "push", "origin", "HEAD")
-
-	if _, err := executeCLI(t, "sync", "--config", env.configPath); err != nil {
-		t.Fatalf("sync failed: %v", err)
-	}
-
-	preData, err := os.ReadFile(filepath.Join(env.clonePath, "pre-sync.marker"))
-	if err != nil {
-		t.Fatalf("read pre-sync marker: %v", err)
-	}
-	if strings.TrimSpace(string(preData)) != "pre" {
-		t.Fatalf("pre-sync marker content = %q, want pre", strings.TrimSpace(string(preData)))
-	}
-
-	postData, err := os.ReadFile(filepath.Join(env.clonePath, "post-sync.marker"))
-	if err != nil {
-		t.Fatalf("read post-sync marker: %v", err)
-	}
-	if strings.TrimSpace(string(postData)) != "post" {
-		t.Fatalf("post-sync marker content = %q, want post", strings.TrimSpace(string(postData)))
-	}
-}
-
-func TestCLISyncDecryptCopyIntegration(t *testing.T) {
-	requireGit(t)
-	env := setupCLIIntegration(t, false)
-	initForIntegration(t, env)
-
-	sopsScript := filepath.Join(env.binPath, "sops")
-	sopsBody := "#!/bin/sh\nprintf 'api_key: decrypted-value\\n'"
-	if err := os.WriteFile(sopsScript, []byte(sopsBody), 0o755); err != nil {
-		t.Fatalf("write fake sops script: %v", err)
-	}
-
-	writer := filepath.Join(t.TempDir(), "writer")
-	gitCmd(t, "", "clone", env.remotePath, writer)
-
-	encPath := filepath.Join(writer, "configs", "secrets", "api.enc.yaml")
-	if err := os.MkdirAll(filepath.Dir(encPath), 0o755); err != nil {
-		t.Fatalf("mkdir encrypted source path: %v", err)
-	}
-	if err := os.WriteFile(encPath, []byte("ENC[AES256_GCM,data:...]\n"), 0o600); err != nil {
-		t.Fatalf("write encrypted source: %v", err)
-	}
-
-	manifestBody := "version: 1\nfiles:\n  - source: configs/secrets/api.enc.yaml\n    target: ~/.config/decrypted/api.yaml\n    mode: copy\n    decrypt: true\n"
-	if err := os.WriteFile(filepath.Join(writer, "manifest.yaml"), []byte(manifestBody), 0o644); err != nil {
-		t.Fatalf("write decrypt manifest: %v", err)
-	}
-
-	gitCmd(t, writer, "add", "manifest.yaml", "configs/secrets/api.enc.yaml")
-	gitCmd(t, writer, "-c", "user.name=test", "-c", "user.email=test@example.com", "commit", "-m", "add decrypt copy entry")
-	gitCmd(t, writer, "push", "origin", "HEAD")
-
-	if _, err := executeCLI(t, "sync", "--config", env.configPath); err != nil {
-		t.Fatalf("sync failed: %v", err)
-	}
-
-	target := filepath.Join(env.homePath, ".config", "decrypted", "api.yaml")
-	data, err := os.ReadFile(target)
-	if err != nil {
-		t.Fatalf("read decrypted target: %v", err)
-	}
-	if strings.TrimSpace(string(data)) != "api_key: decrypted-value" {
-		t.Fatalf("decrypted target = %q, want api_key: decrypted-value", strings.TrimSpace(string(data)))
-	}
-}
-
-func TestCLISyncRollbackOnPostHookFailure(t *testing.T) {
-	requireGit(t)
-	env := setupCLIIntegration(t, false)
-	initForIntegration(t, env)
-
-	manifestBody := "version: 1\nfiles:\n  - source: configs/zsh/.zshrc\n    target: ~/.zshrc\nhooks:\n  post_sync:\n    - command: exit 9\n"
-	if err := os.WriteFile(filepath.Join(env.clonePath, "manifest.yaml"), []byte(manifestBody), 0o644); err != nil {
-		t.Fatalf("write manifest with failing post_sync hook: %v", err)
-	}
-	gitCmd(t, env.clonePath, "add", "manifest.yaml")
-	gitCmd(t, env.clonePath, "-c", "user.name=test", "-c", "user.email=test@example.com", "commit", "-m", "configure failing post hook")
-	gitCmd(t, env.clonePath, "push", "origin", "HEAD")
-
-	_, err := executeCLI(t, "sync", "--config", env.configPath)
-	if err == nil {
-		t.Fatal("expected sync failure due to failing post_sync hook")
-	}
-	if !strings.Contains(err.Error(), "post_sync hook failed") {
-		t.Fatalf("unexpected sync error: %v", err)
-	}
-
-	target := filepath.Join(env.homePath, ".zshrc")
-	if _, statErr := os.Lstat(target); !os.IsNotExist(statErr) {
-		t.Fatalf("expected rollback to remove target %s, got err=%v", target, statErr)
-	}
-}
-
 func TestCLIDoctorIntegration(t *testing.T) {
 	requireGit(t)
 	env := setupCLIIntegration(t, true)
@@ -395,69 +208,11 @@ func TestCLIDoctorIntegration(t *testing.T) {
 	}
 }
 
-func TestCLIReposAddUseIntegration(t *testing.T) {
-	requireGit(t)
-	env := setupCLIIntegration(t, false)
-	initForIntegration(t, env)
-
-	remote2 := filepath.Join(t.TempDir(), "remote2.git")
-	seed2 := filepath.Join(t.TempDir(), "seed2")
-	clone2 := filepath.Join(t.TempDir(), "clone2")
-
-	gitCmd(t, "", "init", "--bare", remote2)
-	gitCmd(t, "", "clone", remote2, seed2)
-	if err := os.MkdirAll(filepath.Join(seed2, "configs"), 0o755); err != nil {
-		t.Fatalf("mkdir seed2 configs: %v", err)
-	}
-	if err := os.WriteFile(filepath.Join(seed2, "manifest.yaml"), []byte("version: 1\nfiles: []\n"), 0o644); err != nil {
-		t.Fatalf("write seed2 manifest: %v", err)
-	}
-	gitCmd(t, seed2, "add", ".")
-	gitCmd(t, seed2, "-c", "user.name=test", "-c", "user.email=test@example.com", "commit", "-m", "seed2")
-	gitCmd(t, seed2, "push", "origin", "HEAD")
-
-	if _, err := executeCLI(t,
-		"repos", "add",
-		"--name", "work",
-		"--url", remote2,
-		"--path", clone2,
-		"--activate=false",
-		"--config", env.configPath,
-	); err != nil {
-		t.Fatalf("repos add failed: %v", err)
-	}
-
-	if _, err := executeCLI(t, "repos", "use", "work", "--config", env.configPath); err != nil {
-		t.Fatalf("repos use failed: %v", err)
-	}
-
-	raw, err := executeCLI(t, "status", "--json", "--config", env.configPath)
-	if err != nil {
-		t.Fatalf("status failed: %v", err)
-	}
-	var status struct {
-		Repo struct {
-			Name string `json:"name"`
-			URL  string `json:"url"`
-		} `json:"repo"`
-	}
-	if err := json.Unmarshal([]byte(raw), &status); err != nil {
-		t.Fatalf("parse status json: %v", err)
-	}
-	if status.Repo.Name != "work" {
-		t.Fatalf("status repo name = %q, want work", status.Repo.Name)
-	}
-	if status.Repo.URL != remote2 {
-		t.Fatalf("status repo url = %q, want %q", status.Repo.URL, remote2)
-	}
-}
-
 func initForIntegration(t *testing.T, env cliTestEnv) {
 	t.Helper()
 	_, err := executeCLI(t,
 		"init",
 		"--repo", env.remotePath,
-		"--profile", "devserver",
 		"--path", env.clonePath,
 		"--config", env.configPath,
 	)

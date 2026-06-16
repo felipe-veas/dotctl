@@ -32,7 +32,7 @@ func runSync(cmd *cobra.Command, args []string) (err error) {
 	if err != nil {
 		return err
 	}
-	logging.Info("sync start", "repo_path", cfg.Repo.Path, "profile", cfg.Profile, "dry_run", flagDryRun)
+	logging.Info("sync start", "repo_path", cfg.Repo.Path, "dry_run", flagDryRun)
 
 	syncLock, err := lock.Acquire(lock.DefaultSyncLockPath())
 	if err != nil {
@@ -77,6 +77,12 @@ func runSync(cmd *cobra.Command, args []string) (err error) {
 	if err != nil {
 		return err
 	}
+	warnings := sensitiveManifestTargetWarnings(state.Context.Home, state.Actions)
+	for _, warning := range warnings {
+		if !out.IsJSON() {
+			out.Warn("%s", warning)
+		}
+	}
 	backfillResults, err := backfillMissingSourcesFromTargets(cfg.Repo.Path, state.Actions, flagDryRun)
 	if err != nil {
 		return err
@@ -92,46 +98,17 @@ func runSync(cmd *cobra.Command, args []string) (err error) {
 		reportManagedSourcePrune(out, pruneResults, flagDryRun)
 	}
 
-	if decryptTool, decryptCount, decryptErr := detectDecryptToolForActions(state.Actions); decryptCount > 0 {
-		if decryptErr != nil {
-			return decryptErr
-		}
-		logging.Info("decrypt mode enabled", "entries", decryptCount, "tool", decryptTool)
-		if !out.IsJSON() {
-			out.Info("Decrypt enabled for %d file(s) using %s.", decryptCount, decryptTool)
-		}
-	}
-
 	for _, s := range state.Skipped {
 		out.Info("Skipped: %s (%s)", s.Source, s.SkipReason)
 	}
 
-	preHooks := manifest.ResolveHooks(state.Manifest.Hooks.PreSync, state.Context)
-	postHooks := manifest.ResolveHooks(state.Manifest.Hooks.PostSync, state.Context)
-
-	preHookResults, err := runHooks(out, "pre_sync", preHooks, cfg.Repo.Path, flagDryRun)
-	if err != nil {
-		if out.IsJSON() {
-			_ = out.JSON(syncResult(nil, state.Skipped, flagDryRun, pullOutput, nil, preHookResults, nil, nil, nil))
-		}
-		return err
-	}
-
 	if len(state.Actions) == 0 {
-		out.Info("No actions to apply for profile %q on %s.", cfg.Profile, state.Context.OS)
-
-		postHookResults, err := runHooks(out, "post_sync", postHooks, cfg.Repo.Path, flagDryRun)
-		if err != nil {
-			if out.IsJSON() {
-				_ = out.JSON(syncResult(nil, state.Skipped, flagDryRun, pullOutput, nil, preHookResults, postHookResults, nil, nil))
-			}
-			return err
-		}
+		out.Info("No actions to apply on %s.", state.Context.OS)
 
 		var pushResult *gitops.PushResult
 		var backupRotation *backup.RotationResult
 		if !flagDryRun {
-			res, pushErr := gitops.Push(cfg.Repo.Path, "", cfg.Profile, time.Now())
+			res, pushErr := gitops.Push(cfg.Repo.Path, "", time.Now())
 			if pushErr != nil {
 				return pushErr
 			}
@@ -146,7 +123,7 @@ func runSync(cmd *cobra.Command, args []string) (err error) {
 		}
 
 		if out.IsJSON() {
-			return out.JSON(syncResult(nil, state.Skipped, flagDryRun, pullOutput, pushResult, preHookResults, postHookResults, nil, backupRotation))
+			return out.JSON(syncResult(nil, state.Skipped, flagDryRun, pullOutput, pushResult, nil, backupRotation, warnings))
 		}
 		return nil
 	}
@@ -154,7 +131,7 @@ func runSync(cmd *cobra.Command, args []string) (err error) {
 	if flagDryRun {
 		out.Header("Dry run (no changes will be made):")
 	} else {
-		out.Header(fmt.Sprintf("Applying manifest (profile: %s, os: %s)...", cfg.Profile, state.Context.OS))
+		out.Header(fmt.Sprintf("Applying manifest (os: %s)...", state.Context.OS))
 	}
 
 	results := linker.Apply(state.Actions, cfg.Repo.Path, flagDryRun)
@@ -190,35 +167,19 @@ func runSync(cmd *cobra.Command, args []string) (err error) {
 		case "created":
 			out.Success("%s → %s (symlink created)", r.Action.Source, r.Action.Target)
 		case "copied":
-			if r.Decrypted {
-				out.Success("%s → %s (decrypted and copied)", r.Action.Source, r.Action.Target)
-			} else {
-				out.Success("%s → %s (copied)", r.Action.Source, r.Action.Target)
-			}
+			out.Success("%s → %s (copied)", r.Action.Source, r.Action.Target)
 		case "already_linked":
 			out.Success("%s → %s (already linked)", r.Action.Source, r.Action.Target)
 		case "backed_up":
-			if r.Decrypted {
-				out.Success("%s → %s (backed up to %s, decrypted and copied)", r.Action.Source, r.Action.Target, r.BackupPath)
-			} else {
-				out.Success("%s → %s (backed up to %s)", r.Action.Source, r.Action.Target, r.BackupPath)
-			}
+			out.Success("%s → %s (backed up to %s)", r.Action.Source, r.Action.Target, r.BackupPath)
 		case "would_create":
 			out.Info("  Would create symlink: %s → %s", r.Action.Source, r.Action.Target)
 		case "would_copy":
-			if r.Action.Decrypt {
-				out.Info("  Would decrypt and copy: %s → %s", r.Action.Source, r.Action.Target)
-			} else {
-				out.Info("  Would copy: %s → %s", r.Action.Source, r.Action.Target)
-			}
+			out.Info("  Would copy: %s → %s", r.Action.Source, r.Action.Target)
 		case "would_backup_and_link":
 			out.Info("  Would backup and link: %s → %s", r.Action.Source, r.Action.Target)
 		case "would_backup_and_copy":
-			if r.Action.Decrypt {
-				out.Info("  Would backup, decrypt and copy: %s → %s", r.Action.Source, r.Action.Target)
-			} else {
-				out.Info("  Would backup and copy: %s → %s", r.Action.Source, r.Action.Target)
-			}
+			out.Info("  Would backup and copy: %s → %s", r.Action.Source, r.Action.Target)
 		case "error":
 			out.Error("%s → %s: %v", r.Action.Source, r.Action.Target, r.Error)
 		}
@@ -234,16 +195,7 @@ func runSync(cmd *cobra.Command, args []string) (err error) {
 	if summary.Errors > 0 {
 		err = rollbackIfNeeded(fmt.Errorf("%d errors during sync", summary.Errors))
 		if out.IsJSON() {
-			_ = out.JSON(syncResult(results, state.Skipped, flagDryRun, pullOutput, nil, preHookResults, nil, rollbackResults, nil))
-		}
-		return err
-	}
-
-	postHookResults, err := runHooks(out, "post_sync", postHooks, cfg.Repo.Path, flagDryRun)
-	if err != nil {
-		err = rollbackIfNeeded(err)
-		if out.IsJSON() {
-			_ = out.JSON(syncResult(results, state.Skipped, flagDryRun, pullOutput, nil, preHookResults, postHookResults, rollbackResults, nil))
+			_ = out.JSON(syncResult(results, state.Skipped, flagDryRun, pullOutput, nil, rollbackResults, nil, warnings))
 		}
 		return err
 	}
@@ -251,11 +203,11 @@ func runSync(cmd *cobra.Command, args []string) (err error) {
 	var pushResult *gitops.PushResult
 	var backupRotation *backup.RotationResult
 	if !flagDryRun {
-		res, pushErr := gitops.Push(cfg.Repo.Path, "", cfg.Profile, time.Now())
+		res, pushErr := gitops.Push(cfg.Repo.Path, "", time.Now())
 		if pushErr != nil {
 			err = rollbackIfNeeded(pushErr)
 			if out.IsJSON() {
-				_ = out.JSON(syncResult(results, state.Skipped, flagDryRun, pullOutput, nil, preHookResults, postHookResults, rollbackResults, nil))
+				_ = out.JSON(syncResult(results, state.Skipped, flagDryRun, pullOutput, nil, rollbackResults, nil, warnings))
 			}
 			return err
 		}
@@ -272,7 +224,7 @@ func runSync(cmd *cobra.Command, args []string) (err error) {
 		if err := persistLastSync(cfgPath, cfg); err != nil {
 			err = rollbackIfNeeded(err)
 			if out.IsJSON() {
-				_ = out.JSON(syncResult(results, state.Skipped, flagDryRun, pullOutput, pushResult, preHookResults, postHookResults, rollbackResults, nil))
+				_ = out.JSON(syncResult(results, state.Skipped, flagDryRun, pullOutput, pushResult, rollbackResults, nil, warnings))
 			}
 			return err
 		}
@@ -280,10 +232,10 @@ func runSync(cmd *cobra.Command, args []string) (err error) {
 	}
 
 	if out.IsJSON() {
-		return out.JSON(syncResult(results, state.Skipped, flagDryRun, pullOutput, pushResult, preHookResults, postHookResults, rollbackResults, backupRotation))
+		return out.JSON(syncResult(results, state.Skipped, flagDryRun, pullOutput, pushResult, rollbackResults, backupRotation, warnings))
 	}
 
-	logging.Info("sync complete", "profile", cfg.Profile, "dry_run", flagDryRun)
+	logging.Info("sync complete", "dry_run", flagDryRun)
 	return nil
 }
 
@@ -356,26 +308,23 @@ func reportManagedSourceBackfill(out *output.Printer, results []sourceBackfillRe
 }
 
 type syncResultJSON struct {
-	DryRun        bool                `json:"dry_run"`
-	PullOutput    string              `json:"pull_output,omitempty"`
-	Applied       []actionResultJSON  `json:"applied"`
-	Skipped       []skippedJSON       `json:"skipped"`
-	PreSyncHooks  []hookResultJSON    `json:"pre_sync_hooks,omitempty"`
-	PostSyncHooks []hookResultJSON    `json:"post_sync_hooks,omitempty"`
-	Rollback      []rollbackJSON      `json:"rollback,omitempty"`
-	BackupRotate  *backupRotationJSON `json:"backup_rotation,omitempty"`
-	Summary       summaryJSON         `json:"summary"`
-	Push          *gitops.PushResult  `json:"push,omitempty"`
+	DryRun       bool                `json:"dry_run"`
+	PullOutput   string              `json:"pull_output,omitempty"`
+	Applied      []actionResultJSON  `json:"applied"`
+	Skipped      []skippedJSON       `json:"skipped"`
+	Rollback     []rollbackJSON      `json:"rollback,omitempty"`
+	BackupRotate *backupRotationJSON `json:"backup_rotation,omitempty"`
+	Warnings     []string            `json:"warnings,omitempty"`
+	Summary      summaryJSON         `json:"summary"`
+	Push         *gitops.PushResult  `json:"push,omitempty"`
 }
 
 type actionResultJSON struct {
 	Source     string `json:"source"`
 	Target     string `json:"target"`
 	Mode       string `json:"mode"`
-	Decrypt    bool   `json:"decrypt,omitempty"`
 	Status     string `json:"status"`
 	BackupPath string `json:"backup_path,omitempty"`
-	Decrypted  bool   `json:"decrypted,omitempty"`
 	Error      string `json:"error,omitempty"`
 }
 
@@ -410,10 +359,9 @@ func syncResult(
 	dryRun bool,
 	pullOutput string,
 	push *gitops.PushResult,
-	preHooks []hookResultJSON,
-	postHooks []hookResultJSON,
 	rollback []linker.RollbackResult,
 	backupRotation *backup.RotationResult,
+	warnings []string,
 ) syncResultJSON {
 	var applied []actionResultJSON
 	for _, r := range results {
@@ -421,10 +369,8 @@ func syncResult(
 			Source:     r.Action.Source,
 			Target:     r.Action.Target,
 			Mode:       r.Action.Mode,
-			Decrypt:    r.Action.Decrypt,
 			Status:     r.Status,
 			BackupPath: r.BackupPath,
-			Decrypted:  r.Decrypted,
 		}
 		if r.Error != nil {
 			ar.Error = r.Error.Error()
@@ -464,14 +410,13 @@ func syncResult(
 	}
 
 	return syncResultJSON{
-		DryRun:        dryRun,
-		PullOutput:    pullOutput,
-		Applied:       applied,
-		Skipped:       skippedList,
-		PreSyncHooks:  preHooks,
-		PostSyncHooks: postHooks,
-		Rollback:      rollbackList,
-		BackupRotate:  rotationJSON,
+		DryRun:       dryRun,
+		PullOutput:   pullOutput,
+		Applied:      applied,
+		Skipped:      skippedList,
+		Rollback:     rollbackList,
+		BackupRotate: rotationJSON,
+		Warnings:     warnings,
 		Summary: summaryJSON{
 			Created:   summary.Created + summary.Copied,
 			AlreadyOK: summary.AlreadyOK,

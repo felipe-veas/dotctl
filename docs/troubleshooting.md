@@ -5,7 +5,7 @@
 Run:
 
 ```bash
-dotctl init --repo <url> --profile <name>
+dotctl init --repo <url>
 ```
 
 ## `gh not authenticated`
@@ -23,10 +23,6 @@ Inside the active repo path, commit or stash local changes, then retry:
 ```bash
 dotctl sync
 ```
-
-## `decrypt entries require sops or age in PATH`
-
-Install at least one decryption tool and retry.
 
 ## `doctor` reports drift
 
@@ -51,5 +47,21 @@ Common causes:
 - missing `target`
 - unsupported `mode`
 - duplicate `target` entries
-- `decrypt: true` used without `mode: copy`
-- encrypted source not containing `.enc.` in filename
+- removed fields from older manifests such as `decrypt`
+
+## Restore from backup
+
+List available snapshots and preview the restore first:
+
+```bash
+dotctl backups list
+dotctl backups restore <snapshot> --dry-run
+```
+
+If the plan is correct, restore with:
+
+```bash
+dotctl backups restore <snapshot> --force
+```
+
+Restore only applies targets under your home directory.

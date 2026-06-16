@@ -390,16 +390,12 @@ func Inspect(path string) (InspectResult, error) {
 }
 
 // DefaultCommitMessage builds the default message used by dotctl push.
-func DefaultCommitMessage(profile string, now time.Time) string {
-	profile = strings.TrimSpace(profile)
-	if profile == "" {
-		profile = "unknown"
-	}
-	return fmt.Sprintf("dotctl push from %s @ %s", profile, now.Format("2006-01-02 15:04:05"))
+func DefaultCommitMessage(now time.Time) string {
+	return fmt.Sprintf("dotctl push @ %s", now.Format("2006-01-02 15:04:05"))
 }
 
 // Push stages, commits and pushes local changes.
-func Push(path, message, profile string, now time.Time) (PushResult, error) {
+func Push(path, message string, now time.Time) (PushResult, error) {
 	result := PushResult{}
 
 	if err := ensureRepo(path); err != nil {
@@ -421,7 +417,7 @@ func Push(path, message, profile string, now time.Time) (PushResult, error) {
 
 	message = strings.TrimSpace(message)
 	if message == "" {
-		message = DefaultCommitMessage(profile, now)
+		message = DefaultCommitMessage(now)
 	}
 
 	if _, err := runGitCommand(path, "commit", "-m", message); err != nil {

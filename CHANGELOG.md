@@ -4,7 +4,6 @@
 
 ## [1.12.1](https://github.com/felipe-veas/dotctl/compare/v1.12.0...v1.12.1) (2026-02-17)
 
-
 ### Bug Fixes
 
 * **config:** prevent path traversal in config loading ([9db769a](https://github.com/felipe-veas/dotctl/commit/9db769ad17e2eb6f5c3f902f912d88ccb04d285b))

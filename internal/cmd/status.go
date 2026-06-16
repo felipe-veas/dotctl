@@ -30,11 +30,9 @@ func runStatus(cmd *cobra.Command, args []string) error {
 	}
 
 	status := types.StatusResponse{
-		Profile: cfg.Profile,
-		OS:      runtime.GOOS,
-		Arch:    runtime.GOARCH,
+		OS:   runtime.GOOS,
+		Arch: runtime.GOARCH,
 		Repo: types.RepoStatus{
-			Name:   cfg.Repo.Name,
 			URL:    cfg.Repo.URL,
 			Status: "not cloned",
 		},
@@ -97,6 +95,7 @@ func runStatus(cmd *cobra.Command, args []string) error {
 	if stateErr != nil {
 		status.Errors = append(status.Errors, stateErr.Error())
 	} else {
+		status.Warnings = append(status.Warnings, sensitiveManifestTargetWarnings(state.Context.Home, state.Actions)...)
 		status.Symlinks = symlinkStatus(state.Actions, cfg.Repo.Path)
 	}
 
@@ -104,11 +103,7 @@ func runStatus(cmd *cobra.Command, args []string) error {
 		return out.JSON(status)
 	}
 
-	out.Field("Profile", status.Profile)
 	out.Field("OS", status.OS+"/"+status.Arch)
-	if status.Repo.Name != "" {
-		out.Field("Repo name", status.Repo.Name)
-	}
 	out.Field("Repo", status.Repo.URL+" ("+status.Repo.Status+")")
 	if status.Repo.Branch != "" {
 		out.Field("Branch", status.Repo.Branch)

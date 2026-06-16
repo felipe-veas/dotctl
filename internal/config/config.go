@@ -13,23 +13,24 @@ import (
 )
 
 const (
-	// DefaultRepoName is used when no explicit repo name is provided.
-	DefaultRepoName = "default"
 	// DefaultBackupKeep is the number of backup snapshots retained by default.
 	DefaultBackupKeep = 20
 )
 
 // Config represents the local dotctl configuration stored on each machine.
 type Config struct {
-	// Legacy single-repo field kept for backward compatibility.
-	Repo RepoConfig `yaml:"repo,omitempty"`
-	// Multi-repo configuration.
-	Repos      []RepoConfig `yaml:"repos,omitempty"`
-	ActiveRepo string       `yaml:"active_repo,omitempty"`
-
-	Profile  string       `yaml:"profile"`
+	Repo     RepoConfig   `yaml:"repo,omitempty"`
 	Backup   BackupConfig `yaml:"backup,omitempty"`
 	LastSync *time.Time   `yaml:"last_sync,omitempty"`
+}
+
+type diskConfig struct {
+	Repo       RepoConfig   `yaml:"repo,omitempty"`
+	Repos      []RepoConfig `yaml:"repos,omitempty"`
+	ActiveRepo string       `yaml:"active_repo,omitempty"`
+	Profile    string       `yaml:"profile"` // deprecated; ignored during migration
+	Backup     BackupConfig `yaml:"backup,omitempty"`
+	LastSync   *time.Time   `yaml:"last_sync,omitempty"`
 }
 
 // RepoConfig holds the remote repository configuration.
@@ -66,13 +67,45 @@ func Load(path string) (*Config, error) {
 	}
 
 	var cfg Config
-	if err := yaml.Unmarshal(data, &cfg); err != nil {
+	var raw diskConfig
+	if err := yaml.Unmarshal(data, &raw); err != nil {
 		return nil, fmt.Errorf("parsing config: %w", err)
+	}
+	if err := cfg.loadFromDisk(raw); err != nil {
+		return nil, err
 	}
 
 	cfg.applyDefaults()
 
 	return &cfg, nil
+}
+
+func (c *Config) loadFromDisk(raw diskConfig) error {
+	c.Repo = raw.Repo
+	c.Backup = raw.Backup
+	c.LastSync = raw.LastSync
+
+	if strings.TrimSpace(c.Repo.URL) != "" || strings.TrimSpace(c.Repo.Path) != "" {
+		return nil
+	}
+
+	if len(raw.Repos) == 0 {
+		return nil
+	}
+	if len(raw.Repos) == 1 {
+		c.Repo = raw.Repos[0]
+		return nil
+	}
+
+	active := NormalizeRepoName(raw.ActiveRepo)
+	for _, repo := range raw.Repos {
+		if NormalizeRepoName(repo.Name) == active && active != "" {
+			c.Repo = repo
+			return nil
+		}
+	}
+
+	return fmt.Errorf("config has multiple deprecated repos; select one repository and keep it under the repo field before continuing")
 }
 
 func normalizeConfigPath(path string) (string, error) {
@@ -127,111 +160,18 @@ func Exists(path string) bool {
 // ErrNotFound indicates no config file exists.
 var ErrNotFound = errors.New("config file not found")
 
-// Active returns the currently selected repository config.
-func (c *Config) Active() (RepoConfig, error) {
+// SetRepo sets the single configured repository.
+func (c *Config) SetRepo(repo RepoConfig) error {
 	c.applyDefaults()
 
-	if len(c.Repos) == 0 {
-		return RepoConfig{}, errors.New("no repositories configured")
-	}
-
-	for _, repo := range c.Repos {
-		if repo.Name == c.ActiveRepo {
-			return repo, nil
-		}
-	}
-	return RepoConfig{}, fmt.Errorf("active repo %q not found", c.ActiveRepo)
-}
-
-// SetActiveRepo switches the active repository by name.
-func (c *Config) SetActiveRepo(name string) error {
-	c.applyDefaults()
-
-	normalized := NormalizeRepoName(name)
-	if normalized == "" {
-		return errors.New("repo name cannot be empty")
-	}
-
-	for _, repo := range c.Repos {
-		if repo.Name == normalized {
-			c.ActiveRepo = normalized
-			c.Repo = repo
-			return nil
-		}
-	}
-	return fmt.Errorf("repo %q not found", normalized)
-}
-
-// UpsertRepo inserts a new repo or updates an existing one with the same name.
-// It returns true when an existing repo was updated.
-func (c *Config) UpsertRepo(repo RepoConfig) (bool, error) {
-	c.applyDefaults()
-
-	repo.Name = NormalizeRepoName(repo.Name)
-	if repo.Name == "" {
-		repo.Name = DefaultRepoName
-	}
 	repo.URL = strings.TrimSpace(repo.URL)
 	if repo.URL == "" {
-		return false, errors.New("repo URL cannot be empty")
+		return errors.New("repo URL cannot be empty")
 	}
 	if strings.TrimSpace(repo.Path) == "" {
-		repo.Path = DefaultRepoPath(repo.Name)
+		repo.Path = DefaultRepoPath()
 	}
-
-	for i := range c.Repos {
-		if c.Repos[i].Name == repo.Name {
-			c.Repos[i].URL = repo.URL
-			c.Repos[i].Path = repo.Path
-			if c.ActiveRepo == repo.Name {
-				c.Repo = c.Repos[i]
-			}
-			return true, nil
-		}
-	}
-
-	c.Repos = append(c.Repos, repo)
-	if c.ActiveRepo == "" {
-		c.ActiveRepo = repo.Name
-	}
-	if c.ActiveRepo == repo.Name {
-		c.Repo = repo
-	}
-	return false, nil
-}
-
-// RemoveRepo deletes a repo by name.
-func (c *Config) RemoveRepo(name string) error {
-	c.applyDefaults()
-
-	normalized := NormalizeRepoName(name)
-	if normalized == "" {
-		return errors.New("repo name cannot be empty")
-	}
-
-	next := make([]RepoConfig, 0, len(c.Repos))
-	removed := false
-	for _, repo := range c.Repos {
-		if repo.Name == normalized {
-			removed = true
-			continue
-		}
-		next = append(next, repo)
-	}
-
-	if !removed {
-		return fmt.Errorf("repo %q not found", normalized)
-	}
-	if len(next) == 0 {
-		return errors.New("at least one repo must remain configured")
-	}
-
-	c.Repos = next
-	if c.ActiveRepo == normalized {
-		c.ActiveRepo = c.Repos[0].Name
-	}
-	active, _ := c.Active()
-	c.Repo = active
+	c.Repo = repo
 	return nil
 }
 
@@ -242,13 +182,9 @@ func NormalizeRepoName(name string) string {
 	return name
 }
 
-// DefaultRepoPath returns the default clone directory for a repo name.
-func DefaultRepoPath(name string) string {
-	name = NormalizeRepoName(name)
-	if name == "" || name == DefaultRepoName {
-		return platform.RepoDir()
-	}
-	return filepath.Join(platform.ConfigDir(), "repo-"+name)
+// DefaultRepoPath returns the default clone directory.
+func DefaultRepoPath() string {
+	return platform.RepoDir()
 }
 
 func (c *Config) applyDefaults() {
@@ -256,67 +192,8 @@ func (c *Config) applyDefaults() {
 		c.Backup.Keep = DefaultBackupKeep
 	}
 
-	// Migrate legacy single-repo config to repos list.
-	if len(c.Repos) == 0 && (strings.TrimSpace(c.Repo.URL) != "" || strings.TrimSpace(c.Repo.Path) != "") {
-		legacy := c.Repo
-		legacy.Name = NormalizeRepoName(legacy.Name)
-		if legacy.Name == "" {
-			legacy.Name = DefaultRepoName
-		}
-		if strings.TrimSpace(legacy.Path) == "" {
-			legacy.Path = DefaultRepoPath(legacy.Name)
-		}
-		c.Repos = []RepoConfig{legacy}
+	c.Repo.URL = strings.TrimSpace(c.Repo.URL)
+	if strings.TrimSpace(c.Repo.Path) == "" {
+		c.Repo.Path = DefaultRepoPath()
 	}
-
-	if len(c.Repos) == 0 {
-		// Keep sane defaults for brand-new config instances not yet initialized.
-		if strings.TrimSpace(c.Repo.Path) == "" {
-			c.Repo.Path = platform.RepoDir()
-		}
-		if strings.TrimSpace(c.Repo.Name) == "" {
-			c.Repo.Name = DefaultRepoName
-		}
-		return
-	}
-
-	seen := make(map[string]bool, len(c.Repos))
-	for i := range c.Repos {
-		repo := &c.Repos[i]
-		repo.Name = NormalizeRepoName(repo.Name)
-		if repo.Name == "" {
-			if i == 0 {
-				repo.Name = DefaultRepoName
-			} else {
-				repo.Name = fmt.Sprintf("repo-%d", i+1)
-			}
-		}
-		if seen[repo.Name] {
-			base := repo.Name
-			n := 2
-			for seen[fmt.Sprintf("%s-%d", base, n)] {
-				n++
-			}
-			repo.Name = fmt.Sprintf("%s-%d", base, n)
-		}
-		seen[repo.Name] = true
-
-		repo.URL = strings.TrimSpace(repo.URL)
-		if strings.TrimSpace(repo.Path) == "" {
-			repo.Path = DefaultRepoPath(repo.Name)
-		}
-	}
-
-	c.ActiveRepo = NormalizeRepoName(c.ActiveRepo)
-	if c.ActiveRepo == "" || !seen[c.ActiveRepo] {
-		c.ActiveRepo = c.Repos[0].Name
-	}
-
-	for _, repo := range c.Repos {
-		if repo.Name == c.ActiveRepo {
-			c.Repo = repo
-			return
-		}
-	}
-	c.Repo = c.Repos[0]
 }

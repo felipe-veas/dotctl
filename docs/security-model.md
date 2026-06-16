@@ -10,42 +10,45 @@
 
 - Keep secrets out of tracked files whenever possible.
 - Use `manifest.ignore` patterns to avoid accidental sync of sensitive material.
-- Use encrypted files with `mode: copy` + `decrypt: true` for controlled local plaintext deployment.
+- Use dedicated external secret-management tools for credentials, tokens, and private keys.
+- `dotctl` is intended for non-sensitive dotfiles and does not manage encryption or decryption.
 
-## Encrypted file flow
+## Sensitive file guardrails
 
-- Source file name must contain `.enc.`.
-- `sops` or `age` must be available in PATH.
-- Decryption happens during apply; output is written to the target file.
-- Decrypted files are written with `0600` permissions regardless of source permissions.
+- `dotctl init` adds conservative `.gitignore` defaults for common secret names.
+- `dotctl doctor` reports potentially sensitive tracked files.
+- `dotctl push` blocks sensitive-looking tracked files unless `--force` is used.
+- Externally encrypted artifacts may still be tracked if you intentionally manage them outside dotctl.
 
-## Secrets management (`dotctl secrets`)
+## Path safety
 
-- `dotctl secrets init` generates an age key pair (X25519 + ChaCha20-Poly1305).
-- Private key stored at `~/.config/dotctl/age-identity.txt` with `0600` permissions.
-- Public key stored at `.age-recipient.txt` in the repo root (safe to commit).
-- The identity file is automatically added to `.gitignore`.
-- `dotctl secrets encrypt` encrypts files using the native age format.
-- `dotctl secrets decrypt --stdout` outputs to stdout without touching disk.
-- `dotctl secrets rotate` generates a new key and re-encrypts all protected files.
-- `dotctl push` includes a preflight check that blocks unencrypted sensitive files (override with `--force`).
-- `dotctl doctor` reports secrets health: identity presence, encrypted files, and unprotected sensitive files.
+- Manifest targets must resolve strictly under the user's home directory.
+- `dotctl` rejects relative targets, targets outside `$HOME`, `$HOME` itself, and parent-traversal escapes before applying filesystem changes.
+- Repository source paths must remain relative to the repository root.
+- `dotctl status`, `dotctl doctor`, and `dotctl sync` warn on sensitive-looking manifest targets such as `.ssh`, `.gnupg`, `.kube`, `.aws`, `.config/gh`, `.config/gcloud`, and `.env` files.
 
-### What the scheme protects
+### What the guardrails protect
 
-- Secrets at rest in the repository (ciphertext only in git history).
-- Accidental plaintext commits (preflight check + `.gitignore`).
+- Accidental commits of obvious sensitive filenames.
+- Accidental application of ignored sources.
+- Accidental overwrite or removal of paths outside the user's home directory.
+- Accidental management of high-risk local credential/config paths without an explicit warning.
 
-### What it does NOT protect
+### What the guardrails do not protect
 
-- Local malware with process access (can read the key file or plaintext in memory).
-- Compromised private key (if leaked with the repo, all secrets are exposed).
-- Plaintext at destination after sync (target files exist on disk).
+- Secrets with non-obvious names.
+- Secrets already committed to Git history.
+- Local malware or compromised developer machines.
+- Encryption, decryption, key rotation, or key recovery.
+- Symlink-based attacks from already-compromised local directories outside dotctl's control.
 
 ## Backups and rollback
 
 - Existing targets are backed up before overwrite by default.
 - Sync attempts rollback if a later step fails after changes were applied.
+- `dotctl backups list` exposes local backup snapshots.
+- `dotctl backups restore <snapshot>` requires `--force` unless `--dry-run` is used.
+- Restore rejects targets outside `$HOME` or equal to `$HOME` before applying filesystem changes.
 
 ## Logging
 
@@ -57,7 +60,4 @@
 
 - Sync uses a lock file to prevent parallel apply/push flows.
 
-## Secrets Design Docs
-
-- [Secrets design](./secrets-design.md)
-- [Secrets MVP implementation plan (historical)](./archive/2026-foundation/v1-secrets-mvp-implementation-plan.md)
+Historical notes for the removed secrets implementation are archived under [docs/archive](./archive/README.md).
