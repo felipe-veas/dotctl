@@ -4,7 +4,6 @@
 
 - `git`
 - Optional: `gh` (for HTTPS GitHub URLs)
-- Optional: `sops` or `age` (for `decrypt: true` entries)
 
 ## Option 1: Homebrew (macOS / Linux)
 

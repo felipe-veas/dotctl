@@ -2,40 +2,24 @@
 
 ## Core commands
 
-- `dotctl init`: configure profile and clone repo.
-- `dotctl sync`: pull, apply manifest, run hooks, push.
+- `dotctl init`: configure and clone repo.
+- `dotctl add <path>`: copy one local dotfile into the repo, update `manifest.yaml`, back up the original, and replace it with a symlink.
+- `dotctl remove <path>`: remove matching manifest entries and managed-source metadata without deleting local files or repo sources.
+- `dotctl sync`: pull, apply manifest, push.
 - `dotctl status`: show repo/auth/symlink state.
 - `dotctl doctor`: run health checks.
 - `dotctl diff`: show drift and content differences.
 - `dotctl pull`: run `git pull --rebase`.
 - `dotctl push`: stage, commit, and push local changes.
-- `dotctl watch`: run auto-sync on filesystem changes.
-- `dotctl bootstrap`: run bootstrap hooks.
+- `dotctl edit [repo|manifest]`: open the repo directory or manifest with `$VISUAL` or `$EDITOR`.
+- `dotctl backups list`: list local backup snapshots.
+- `dotctl backups restore <snapshot>`: restore a local backup snapshot; requires `--force` unless `--dry-run`.
 - `dotctl open`: open repository in browser.
-- `dotctl repos`: manage multiple configured repositories.
-- `dotctl secrets`: manage encrypted secrets in the repository.
 - `dotctl version`: print binary version and OS/arch.
-
-## Secrets subcommands
-
-- `dotctl secrets init [--identity <path>] [--import <path>]`: generate or import an age identity.
-- `dotctl secrets encrypt <file> [file...] [--recipient <key>] [--keep]`: encrypt files for the repo.
-- `dotctl secrets decrypt <file> [file...] [--identity <path>] [--keep] [--stdout]`: decrypt files.
-- `dotctl secrets status`: show secrets protection status.
-- `dotctl secrets rotate [--identity <path>]`: generate new key and re-encrypt all files.
-
-## Multi-repo subcommands
-
-- `dotctl repos list`
-- `dotctl repos add --name <name> --url <url> [--path <path>] [--activate]`
-- `dotctl repos use <name>`
-- `dotctl repos remove <name>`
 
 ## Common global flags
 
 - `--config <path>`
-- `--profile <name>`
-- `--repo-name <name>`
 - `--json`
 - `--dry-run`
 - `--verbose`
@@ -45,14 +29,20 @@
 
 ```bash
 dotctl status --json
+dotctl add ~/.zshrc --dry-run
+dotctl add ~/.zshrc
+dotctl remove ~/.zshrc --dry-run
+dotctl edit manifest
+dotctl backups list
+dotctl backups restore 20260101-010101.000001 --dry-run
 dotctl diff --details
 dotctl push -m "chore: update shell aliases"
-dotctl watch --debounce 2s --cooldown 4s
-
-# Secrets workflow
-dotctl secrets init
-dotctl secrets encrypt configs/env/.env
-dotctl secrets decrypt configs/env/.env.enc --stdout
-dotctl secrets status
-dotctl secrets rotate
 ```
+
+`dotctl add` accepts one path at a time. It rejects paths outside `$HOME`, paths overlapping the dotctl repo, and sensitive-looking targets unless `--force` is used.
+
+`dotctl remove` also accepts one path at a time. It untracks the path only; it does not delete the local target or the repo source.
+
+`dotctl edit` requires `$VISUAL` or `$EDITOR`. Use `dotctl edit` or `dotctl edit repo` for the repository directory and `dotctl edit manifest` for `manifest.yaml`.
+
+`dotctl backups restore` overwrites local targets and therefore requires `--force` for real restores. Run `--dry-run` first and review the planned targets.
