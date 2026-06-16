@@ -562,13 +562,14 @@ Behavior:
 
 ### Add backup restore commands
 
-Status: completed for the current MVP. Restore requires `--force` unless `--dry-run`; snapshot metadata now preserves logical directory entries for exact restore.
+Status: completed for the current MVP. Restore supports repeatable `--target`; `--force` is still required unless `--dry-run`, and snapshot metadata now preserves logical directory entries for exact restore.
 
 Commands:
 
 ```bash
 dotctl backups list
 dotctl backups restore <snapshot>
+dotctl backups restore <snapshot> --target ~/.zshrc
 ```
 
 ### Add `dotctl edit`

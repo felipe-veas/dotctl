@@ -18,6 +18,7 @@ type backupsListOutput struct {
 type backupsRestoreOutput struct {
 	Snapshot string                 `json:"snapshot"`
 	DryRun   bool                   `json:"dry_run"`
+	Targets  []string               `json:"targets,omitempty"`
 	Entries  []backup.RestoreResult `json:"entries"`
 }
 
@@ -46,12 +47,16 @@ func newBackupsListCmd() *cobra.Command {
 }
 
 func newBackupsRestoreCmd() *cobra.Command {
-	return &cobra.Command{
+	cmd := &cobra.Command{
 		Use:   "restore <snapshot>",
 		Short: "Restore a backup snapshot",
 		Args:  cobra.ExactArgs(1),
 		RunE:  runBackupsRestore,
 	}
+
+	cmd.Flags().StringArray("target", nil, "restore only the specified target (repeatable)")
+
+	return cmd
 }
 
 func runBackupsList(cmd *cobra.Command, args []string) error {
@@ -83,14 +88,22 @@ func runBackupsList(cmd *cobra.Command, args []string) error {
 func runBackupsRestore(cmd *cobra.Command, args []string) error {
 	out := output.New(flagJSON)
 	snapshot := args[0]
+	targets, err := cmd.Flags().GetStringArray("target")
+	if err != nil {
+		return fmt.Errorf("reading target flags: %w", err)
+	}
 
 	if !flagDryRun && !flagForce {
 		return fmt.Errorf("restore overwrites local targets; rerun with --force after reviewing --dry-run")
 	}
 
-	results, err := backup.RestoreSnapshot(snapshot, flagDryRun)
+	results, err := backup.RestoreSnapshotTargets(snapshot, targets, flagDryRun)
 	if out.IsJSON() {
-		if jsonErr := out.JSON(backupsRestoreOutput{Snapshot: snapshot, DryRun: flagDryRun, Entries: results}); jsonErr != nil {
+		payload := backupsRestoreOutput{Snapshot: snapshot, DryRun: flagDryRun, Entries: results}
+		if len(targets) > 0 {
+			payload.Targets = append([]string(nil), targets...)
+		}
+		if jsonErr := out.JSON(payload); jsonErr != nil {
 			return jsonErr
 		}
 	} else {

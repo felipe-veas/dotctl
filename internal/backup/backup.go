@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"runtime"
 	"sort"
 	"strings"
 	"sync"
@@ -264,6 +265,15 @@ func SnapshotEntries(snapshot string) ([]Entry, error) {
 
 // RestoreSnapshot restores a snapshot into the current user's home directory.
 func RestoreSnapshot(snapshot string, dryRun bool) ([]RestoreResult, error) {
+	return restoreSnapshot(snapshot, nil, dryRun)
+}
+
+// RestoreSnapshotTargets restores only the requested targets from a snapshot.
+func RestoreSnapshotTargets(snapshot string, targets []string, dryRun bool) ([]RestoreResult, error) {
+	return restoreSnapshot(snapshot, targets, dryRun)
+}
+
+func restoreSnapshot(snapshot string, targets []string, dryRun bool) ([]RestoreResult, error) {
 	entries, err := SnapshotEntries(snapshot)
 	if err != nil {
 		return nil, err
@@ -273,14 +283,27 @@ func RestoreSnapshot(snapshot string, dryRun bool) ([]RestoreResult, error) {
 	if err != nil {
 		return nil, fmt.Errorf("detecting home directory: %w", err)
 	}
-	homeAbs, err := filepath.Abs(filepath.Clean(homeDir))
+	homeAbs, err := canonicalizeExistingPath(homeDir)
 	if err != nil {
 		return nil, fmt.Errorf("resolving home directory: %w", err)
 	}
+	cwd, err := os.Getwd()
+	if err != nil {
+		return nil, fmt.Errorf("detecting working directory: %w", err)
+	}
+	cwd, err = canonicalizeExistingPath(cwd)
+	if err != nil {
+		return nil, fmt.Errorf("resolving working directory: %w", err)
+	}
 
-	results := make([]RestoreResult, 0, len(entries))
+	selected, err := selectRestoreEntries(snapshot, entries, targets, homeAbs, homeAbs, cwd)
+	if err != nil {
+		return nil, err
+	}
+
+	results := make([]RestoreResult, 0, len(selected))
 	var errs []error
-	for _, entry := range entries {
+	for _, entry := range selected {
 		result := RestoreResult{
 			Snapshot:   entry.Snapshot,
 			BackupPath: entry.BackupPath,
@@ -574,4 +597,103 @@ func validateRestoreTarget(homeAbs, target string) error {
 		return fmt.Errorf("restore target %s must stay under home directory %s", targetAbs, homeAbs)
 	}
 	return nil
+}
+
+func selectRestoreEntries(snapshot string, entries []Entry, targets []string, homeAbs, homeDir, cwd string) ([]Entry, error) {
+	if len(targets) == 0 {
+		return entries, nil
+	}
+
+	requested := make(map[string]struct{}, len(targets))
+	orderedTargets := make([]string, 0, len(targets))
+	for _, rawTarget := range targets {
+		normalizedTarget, err := normalizeRestoreTarget(rawTarget, cwd, homeDir)
+		if err != nil {
+			return nil, err
+		}
+		if err := validateRestoreTarget(homeAbs, normalizedTarget); err != nil {
+			return nil, err
+		}
+		if _, ok := requested[normalizedTarget]; ok {
+			continue
+		}
+		requested[normalizedTarget] = struct{}{}
+		orderedTargets = append(orderedTargets, normalizedTarget)
+	}
+
+	matched := make(map[string]int, len(requested))
+	selected := make([]Entry, 0, len(entries))
+	for _, entry := range entries {
+		normalizedEntryTarget, err := normalizeRestoreEntryTarget(entry.Target)
+		if err != nil {
+			return nil, err
+		}
+		if _, ok := requested[normalizedEntryTarget]; !ok {
+			continue
+		}
+
+		selected = append(selected, entry)
+		matched[normalizedEntryTarget]++
+	}
+
+	for _, target := range orderedTargets {
+		if matched[target] == 0 {
+			return nil, fmt.Errorf("snapshot %q does not contain target %q", snapshot, target)
+		}
+	}
+
+	return selected, nil
+}
+
+func normalizeRestoreTarget(raw, cwd, homeDir string) (string, error) {
+	trimmed := strings.TrimSpace(raw)
+	if trimmed == "" {
+		return "", fmt.Errorf("restore target is required")
+	}
+
+	expanded := trimmed
+	switch {
+	case expanded == "~":
+		expanded = homeDir
+	case strings.HasPrefix(expanded, "~/"):
+		expanded = filepath.Join(homeDir, strings.TrimPrefix(expanded, "~/"))
+	}
+
+	if !filepath.IsAbs(expanded) {
+		expanded = filepath.Join(cwd, expanded)
+	}
+
+	abs, err := filepath.Abs(expanded)
+	if err != nil {
+		return "", fmt.Errorf("resolving restore target %q: %w", raw, err)
+	}
+
+	return canonicalizeExistingPath(abs)
+}
+
+func normalizeRestoreEntryTarget(target string) (string, error) {
+	trimmed := strings.TrimSpace(target)
+	if trimmed == "" {
+		return "", fmt.Errorf("snapshot entry target is required")
+	}
+
+	abs, err := filepath.Abs(filepath.Clean(trimmed))
+	if err != nil {
+		return "", fmt.Errorf("resolving snapshot entry target %q: %w", target, err)
+	}
+
+	return canonicalizeExistingPath(abs)
+}
+
+func canonicalizeExistingPath(path string) (string, error) {
+	abs, err := filepath.Abs(filepath.Clean(path))
+	if err != nil {
+		return "", err
+	}
+
+	if runtime.GOOS == "darwin" && strings.HasPrefix(abs, "/private/") {
+		abs = "/" + strings.TrimPrefix(abs, "/private/")
+	}
+
+	return filepath.Clean(abs), nil
 }

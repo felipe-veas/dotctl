@@ -47,7 +47,7 @@
 - Existing targets are backed up before overwrite by default.
 - Sync attempts rollback if a later step fails after changes were applied.
 - `dotctl backups list` exposes local backup snapshots.
-- `dotctl backups restore <snapshot>` requires `--force` unless `--dry-run` is used.
+- `dotctl backups restore <snapshot>` requires `--force` unless `--dry-run` is used. With `--target`, restores are limited to exact backed-up paths and the flag can be repeated for multiple entries.
 - Restore rejects targets outside `$HOME` or equal to `$HOME` before applying filesystem changes.
 
 ## Logging

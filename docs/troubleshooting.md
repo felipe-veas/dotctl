@@ -56,12 +56,14 @@ List available snapshots and preview the restore first:
 ```bash
 dotctl backups list
 dotctl backups restore <snapshot> --dry-run
+dotctl backups restore <snapshot> --target ~/.zshrc --dry-run
 ```
 
 If the plan is correct, restore with:
 
 ```bash
+dotctl backups restore <snapshot> --target ~/.zshrc --force
 dotctl backups restore <snapshot> --force
 ```
 
-Restore only applies targets under your home directory.
+`--target` matches the backed-up target path exactly. Repeat it to restore multiple entries. Directory targets restore the directory entry when the snapshot has one. Restore only applies targets under your home directory.
