@@ -13,11 +13,10 @@ This file tracks forward-looking product priorities. Historical implementation p
 
 - Keep sync explicit, CLI-only, and easy to reason about.
 - Stabilize the simplified command set and documentation.
-- Improve restore metadata in future backup snapshots.
+- Backup snapshots now record restore metadata for exact logical entries.
 
 ## Medium-term
 
-- Add richer backup metadata for exact directory restore semantics.
 - Add targeted backup restore by path if needed.
 - Continue hardening path validation and sensitive-file guardrails.
 

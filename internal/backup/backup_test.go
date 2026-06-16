@@ -1,11 +1,13 @@
 package backup
 
 import (
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"sort"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestCreateBackupFile(t *testing.T) {
@@ -100,6 +102,264 @@ func TestCreateBackupSymlink(t *testing.T) {
 	if linkDest != target {
 		t.Errorf("backup link dest = %q, want %q", linkDest, target)
 	}
+}
+
+func TestCreateWritesMetadataForFile(t *testing.T) {
+	dir := t.TempDir()
+	src := filepath.Join(dir, "testfile.txt")
+	if err := os.WriteFile(src, []byte("hello"), 0o644); err != nil {
+		t.Fatalf("write source file: %v", err)
+	}
+
+	configHome := filepath.Join(dir, "config")
+	t.Setenv("XDG_CONFIG_HOME", configHome)
+
+	backupPath, err := Create(src)
+	if err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+
+	snapshot := snapshotFromBackupPath(t, configHome, backupPath)
+	metadata := readSnapshotMetadata(t, snapshot)
+	if metadata.Version != snapshotMetadataVersion {
+		t.Fatalf("metadata version = %d, want %d", metadata.Version, snapshotMetadataVersion)
+	}
+	if metadata.CreatedAt.IsZero() {
+		t.Fatal("metadata created_at is zero")
+	}
+	if len(metadata.Entries) != 1 {
+		t.Fatalf("metadata entries = %d, want 1", len(metadata.Entries))
+	}
+	entry := metadata.Entries[0]
+	if entry.Target != metadataTargetPath(src) {
+		t.Fatalf("metadata target = %q, want %q", entry.Target, metadataTargetPath(src))
+	}
+	if entry.BackupPath != backupPath {
+		t.Fatalf("metadata backup_path = %q, want %q", entry.BackupPath, backupPath)
+	}
+	if entry.Kind != "file" {
+		t.Fatalf("metadata kind = %q, want file", entry.Kind)
+	}
+	if entry.Mode == "" {
+		t.Fatal("metadata mode is empty")
+	}
+}
+
+func TestCreateWritesMetadataForDirectoryAndRestoreUsesMetadata(t *testing.T) {
+	dir := t.TempDir()
+	home := filepath.Join(dir, "home")
+	configHome := filepath.Join(dir, "config")
+	t.Setenv("HOME", home)
+	t.Setenv("XDG_CONFIG_HOME", configHome)
+
+	targetDir := filepath.Join(home, ".config", "nvim")
+	if err := os.MkdirAll(filepath.Join(targetDir, "sub"), 0o755); err != nil {
+		t.Fatalf("mkdir target dir: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(targetDir, "init.lua"), []byte("print('hello')\n"), 0o644); err != nil {
+		t.Fatalf("write init.lua: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(targetDir, "sub", "plugin.lua"), []byte("return {}\n"), 0o644); err != nil {
+		t.Fatalf("write plugin.lua: %v", err)
+	}
+
+	endSession := BeginSession()
+	defer endSession()
+
+	backupPath, err := Create(targetDir)
+	if err != nil {
+		t.Fatalf("Create dir: %v", err)
+	}
+
+	snapshot := snapshotFromBackupPath(t, configHome, backupPath)
+	metadata := readSnapshotMetadata(t, snapshot)
+	if len(metadata.Entries) != 1 {
+		t.Fatalf("metadata entries = %d, want 1", len(metadata.Entries))
+	}
+	entry := metadata.Entries[0]
+	if entry.Kind != "dir" {
+		t.Fatalf("metadata kind = %q, want dir", entry.Kind)
+	}
+
+	entries, err := SnapshotEntries(snapshot)
+	if err != nil {
+		t.Fatalf("SnapshotEntries: %v", err)
+	}
+	if len(entries) != 1 {
+		t.Fatalf("snapshot entries = %d, want 1", len(entries))
+	}
+	if entries[0].Kind != "dir" {
+		t.Fatalf("snapshot entry kind = %q, want dir", entries[0].Kind)
+	}
+	if entries[0].BackupPath != backupPath {
+		t.Fatalf("snapshot entry backup_path = %q, want %q", entries[0].BackupPath, backupPath)
+	}
+
+	if err := os.WriteFile(filepath.Join(targetDir, "old.txt"), []byte("old\n"), 0o644); err != nil {
+		t.Fatalf("write stale file: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(targetDir, "init.lua"), []byte("changed\n"), 0o644); err != nil {
+		t.Fatalf("mutate init.lua: %v", err)
+	}
+
+	results, err := RestoreSnapshot(snapshot, false)
+	if err != nil {
+		t.Fatalf("RestoreSnapshot: %v", err)
+	}
+	if len(results) != 1 || results[0].Status != "restored" {
+		t.Fatalf("results = %#v", results)
+	}
+
+	data, err := os.ReadFile(filepath.Join(targetDir, "init.lua"))
+	if err != nil {
+		t.Fatalf("read restored init.lua: %v", err)
+	}
+	if string(data) != "print('hello')\n" {
+		t.Fatalf("restored init.lua = %q", string(data))
+	}
+	if _, err := os.Stat(filepath.Join(targetDir, "old.txt")); !os.IsNotExist(err) {
+		t.Fatalf("old.txt should be removed, err=%v", err)
+	}
+}
+
+func TestCreateAppendsMetadataForRepeatedTargets(t *testing.T) {
+	dir := t.TempDir()
+	configHome := filepath.Join(dir, "config")
+	t.Setenv("XDG_CONFIG_HOME", configHome)
+
+	src := filepath.Join(dir, "target.txt")
+	if err := os.WriteFile(src, []byte("one"), 0o644); err != nil {
+		t.Fatalf("write source #1: %v", err)
+	}
+
+	endSession := BeginSession()
+	defer endSession()
+
+	backupOne, err := Create(src)
+	if err != nil {
+		t.Fatalf("Create #1: %v", err)
+	}
+
+	if err := os.WriteFile(src, []byte("two"), 0o644); err != nil {
+		t.Fatalf("write source #2: %v", err)
+	}
+	backupTwo, err := Create(src)
+	if err != nil {
+		t.Fatalf("Create #2: %v", err)
+	}
+
+	snapshot := snapshotFromBackupPath(t, configHome, backupOne)
+	if snapshot != snapshotFromBackupPath(t, configHome, backupTwo) {
+		t.Fatal("expected repeated targets to share a snapshot")
+	}
+
+	metadata := readSnapshotMetadata(t, snapshot)
+	if len(metadata.Entries) != 2 {
+		t.Fatalf("metadata entries = %d, want 2", len(metadata.Entries))
+	}
+	if metadata.Entries[0].BackupPath != backupOne {
+		t.Fatalf("entry[0] backup_path = %q, want %q", metadata.Entries[0].BackupPath, backupOne)
+	}
+	if metadata.Entries[1].BackupPath != backupTwo {
+		t.Fatalf("entry[1] backup_path = %q, want %q", metadata.Entries[1].BackupPath, backupTwo)
+	}
+	if backupOne == backupTwo {
+		t.Fatal("expected unique backup paths")
+	}
+	if !strings.HasPrefix(backupTwo, backupOne+"~") {
+		t.Fatalf("backupTwo = %q, expected suffix on %q", backupTwo, backupOne)
+	}
+}
+
+func TestSnapshotEntriesFallsBackWithoutMetadata(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("XDG_CONFIG_HOME", filepath.Join(dir, "config"))
+
+	snapshot := "20260101-010101.000050"
+	root := filepath.Join(dir, "config", "dotctl", "backups", snapshot, "targets")
+	if err := os.MkdirAll(filepath.Join(root, "home", "alice", ".config", "nvim"), 0o755); err != nil {
+		t.Fatalf("mkdir legacy tree: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(root, "home", "alice", ".config", "nvim", "init.lua"), []byte("print('nvim')\n"), 0o644); err != nil {
+		t.Fatalf("write init.lua: %v", err)
+	}
+	if err := os.MkdirAll(filepath.Join(root, "home", "alice", ".config", "nvim", "lua"), 0o755); err != nil {
+		t.Fatalf("mkdir lua dir: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(root, "home", "alice", ".config", "nvim", "lua", "plugins.lua"), []byte("return {}\n"), 0o644); err != nil {
+		t.Fatalf("write plugins.lua: %v", err)
+	}
+
+	entries, err := SnapshotEntries(snapshot)
+	if err != nil {
+		t.Fatalf("SnapshotEntries: %v", err)
+	}
+	if len(entries) != 2 {
+		t.Fatalf("entries = %d, want 2", len(entries))
+	}
+	for _, entry := range entries {
+		if entry.Kind != "file" {
+			t.Fatalf("entry kind = %q, want file", entry.Kind)
+		}
+	}
+}
+
+func TestSnapshotEntriesRejectsMetadataOutsideSnapshotDir(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("XDG_CONFIG_HOME", filepath.Join(dir, "config"))
+
+	snapshot := "20260101-010101.000051"
+	snapshotDir := filepath.Join(dir, "config", "dotctl", "backups", snapshot)
+	if err := os.MkdirAll(filepath.Join(snapshotDir, "targets"), 0o755); err != nil {
+		t.Fatalf("mkdir snapshot dir: %v", err)
+	}
+	metadata := snapshotMetadata{
+		Version:   snapshotMetadataVersion,
+		CreatedAt: time.Now().UTC(),
+		Entries: []snapshotMetadataEntry{{
+			Target:     filepath.Join("/", "home", "alice", ".zshrc"),
+			BackupPath: filepath.Join(dir, "outside", "evil.txt"),
+			Kind:       "file",
+			Mode:       "-rw-r--r--",
+		}},
+	}
+	data, err := json.MarshalIndent(metadata, "", "  ")
+	if err != nil {
+		t.Fatalf("marshal metadata: %v", err)
+	}
+	if err := os.WriteFile(metadataFilePath(snapshot), append(data, '\n'), 0o600); err != nil {
+		t.Fatalf("write metadata: %v", err)
+	}
+	if _, err := SnapshotEntries(snapshot); err == nil {
+		t.Fatal("expected metadata containment error")
+	}
+}
+
+func readSnapshotMetadata(t *testing.T, snapshot string) snapshotMetadata {
+	t.Helper()
+	data, err := os.ReadFile(metadataFilePath(snapshot))
+	if err != nil {
+		t.Fatalf("read metadata: %v", err)
+	}
+	var metadata snapshotMetadata
+	if err := json.Unmarshal(data, &metadata); err != nil {
+		t.Fatalf("decode metadata: %v", err)
+	}
+	return metadata
+}
+
+func snapshotFromBackupPath(t *testing.T, configHome, backupPath string) string {
+	t.Helper()
+	backupRoot := filepath.Join(configHome, "dotctl", "backups")
+	rel, err := filepath.Rel(backupRoot, backupPath)
+	if err != nil {
+		t.Fatalf("rel backup path: %v", err)
+	}
+	parts := strings.Split(rel, string(filepath.Separator))
+	if len(parts) == 0 || parts[0] == "" {
+		t.Fatalf("unexpected backup path layout: %q", rel)
+	}
+	return parts[0]
 }
 
 func TestCreateNonexistent(t *testing.T) {

@@ -562,7 +562,7 @@ Behavior:
 
 ### Add backup restore commands
 
-Status: completed for the current MVP. Restore requires `--force` unless `--dry-run`; directory restore fidelity remains constrained by the existing backup layout.
+Status: completed for the current MVP. Restore requires `--force` unless `--dry-run`; snapshot metadata now preserves logical directory entries for exact restore.
 
 Commands:
 
