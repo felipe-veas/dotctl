@@ -1,4 +1,4 @@
-.PHONY: build build-universal build-linux-amd64 build-linux-arm64 build-tray-linux build-app-macos build-snap build-aur-srcinfo test lint clean install
+.PHONY: build build-universal build-linux-amd64 build-linux-arm64 build-snap build-aur-srcinfo test lint clean install
 
 BINARY := dotctl
 VERSION := $(shell git describe --tags --always --dirty 2>/dev/null || echo "dev")
@@ -20,12 +20,6 @@ build-linux-amd64:
 
 build-linux-arm64:
 	GOOS=linux GOARCH=arm64 go build $(LDFLAGS) -o bin/$(BINARY)-linux-arm64 ./cmd/dotctl
-
-build-tray-linux:
-	./scripts/build-tray-linux.sh
-
-build-app-macos:
-	./scripts/build-app-macos.sh
 
 build-snap:
 	./scripts/build-snap.sh

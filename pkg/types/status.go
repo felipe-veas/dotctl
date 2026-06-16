@@ -1,9 +1,8 @@
 package types
 
 // StatusResponse is the JSON structure returned by `dotctl status --json`.
-// This is the contract consumed by both macOS and Linux tray apps.
+// It is intended for scripts and other explicit CLI automation.
 type StatusResponse struct {
-	Profile  string        `json:"profile"`
 	OS       string        `json:"os"`
 	Arch     string        `json:"arch"`
 	Repo     RepoStatus    `json:"repo"`
@@ -14,7 +13,6 @@ type StatusResponse struct {
 }
 
 type RepoStatus struct {
-	Name       string `json:"name,omitempty"`
 	URL        string `json:"url"`
 	Status     string `json:"status"`
 	Branch     string `json:"branch,omitempty"`

@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	"github.com/felipe-veas/dotctl/internal/gitops"
+	"github.com/felipe-veas/dotctl/internal/manifest"
 )
 
 var sensitiveSuffixes = []string{
@@ -45,7 +46,7 @@ func isSensitiveTrackedPath(p string) bool {
 	lower := strings.ToLower(normalized)
 	base := strings.ToLower(path.Base(lower))
 
-	// Encrypted files are safe — skip them.
+	// Externally encrypted files are acceptable to track.
 	if strings.Contains(base, ".enc.") || strings.HasSuffix(base, ".enc") {
 		return false
 	}
@@ -91,6 +92,83 @@ func sensitiveTrackedFilesWarning(files []string) string {
 	}
 
 	return message
+}
+
+func sensitiveManifestTargetWarnings(home string, actions []manifest.Action) []string {
+	home = strings.TrimSpace(home)
+	if home == "" || len(actions) == 0 {
+		return nil
+	}
+
+	seen := make(map[string]struct{})
+	entries := make([]string, 0)
+
+	for _, action := range actions {
+		rel, err := filepath.Rel(home, action.Target)
+		if err != nil {
+			continue
+		}
+
+		if !isSensitiveManifestTargetRelPath(rel) {
+			continue
+		}
+
+		entry := fmt.Sprintf("%s -> %s", action.Source, action.Target)
+		if _, ok := seen[entry]; ok {
+			continue
+		}
+		seen[entry] = struct{}{}
+		entries = append(entries, entry)
+	}
+
+	if len(entries) == 0 {
+		return nil
+	}
+
+	sort.Strings(entries)
+	return []string{sensitiveManifestTargetsWarning(entries)}
+}
+
+func sensitiveManifestTargetsWarning(entries []string) string {
+	if len(entries) == 0 {
+		return ""
+	}
+
+	const maxPreview = 5
+	preview := entries
+	if len(entries) > maxPreview {
+		preview = entries[:maxPreview]
+	}
+
+	message := fmt.Sprintf("sensitive manifest targets: %s", strings.Join(preview, ", "))
+	if len(entries) > maxPreview {
+		message += fmt.Sprintf(" (+%d more)", len(entries)-maxPreview)
+	}
+
+	return message
+}
+
+func isSensitiveManifestTargetRelPath(rel string) bool {
+	normalized := filepath.ToSlash(strings.TrimSpace(rel))
+	normalized = strings.TrimPrefix(normalized, "./")
+	if normalized == "" {
+		return false
+	}
+
+	lower := strings.ToLower(normalized)
+	base := strings.ToLower(path.Base(lower))
+
+	if base == ".env" || strings.HasPrefix(base, ".env.") {
+		return true
+	}
+
+	for _, prefix := range []string{".ssh", ".gnupg", ".kube", ".aws", ".config/gh", ".config/gcloud"} {
+		if lower == prefix || strings.HasPrefix(lower, prefix+"/") {
+			return true
+		}
+	}
+
+	return false
 }
 
 func missingGitignorePatterns(repoPath string, patterns []string) ([]string, error) {

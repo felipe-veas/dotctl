@@ -12,13 +12,11 @@ import (
 
 // Global flags.
 var (
-	flagProfile  string
-	flagRepoName string
-	flagJSON     bool
-	flagDryRun   bool
-	flagVerbose  bool
-	flagForce    bool
-	flagConfig   string
+	flagJSON    bool
+	flagDryRun  bool
+	flagVerbose bool
+	flagForce   bool
+	flagConfig  string
 )
 
 func NewRootCmd() *cobra.Command {
@@ -55,8 +53,6 @@ func NewRootCmd() *cobra.Command {
 		},
 	}
 
-	root.PersistentFlags().StringVar(&flagProfile, "profile", "", "active profile name")
-	root.PersistentFlags().StringVar(&flagRepoName, "repo-name", "", "active repo name (for multi-repo configs)")
 	root.PersistentFlags().BoolVar(&flagJSON, "json", false, "output in JSON format")
 	root.PersistentFlags().BoolVar(&flagDryRun, "dry-run", false, "show plan without executing")
 	root.PersistentFlags().BoolVar(&flagVerbose, "verbose", false, "verbose output")
@@ -67,17 +63,17 @@ func NewRootCmd() *cobra.Command {
 		newVersionCmd(),
 		newInitCmd(),
 		newStatusCmd(),
+		newAddCmd(),
+		newRemoveCmd(),
+		newBackupsCmd(),
 		newSyncCmd(),
 		newDiffCmd(),
-		newWatchCmd(),
 		newPullCmd(),
 		newPushCmd(),
 		newManifestCmd(),
 		newOpenCmd(),
-		newBootstrapCmd(),
+		newEditCmd(),
 		newDoctorCmd(),
-		newReposCmd(),
-		newSecretsCmd(),
 	)
 
 	return root

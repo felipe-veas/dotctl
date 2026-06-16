@@ -4,6 +4,8 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+
+	"github.com/felipe-veas/dotctl/internal/manifest"
 )
 
 func TestIsSensitiveTrackedPath(t *testing.T) {
@@ -37,6 +39,60 @@ func TestSensitiveTrackedFilesWarning(t *testing.T) {
 	msg := sensitiveTrackedFilesWarning([]string{".env", "secret.key"})
 	if msg == "" {
 		t.Fatal("expected non-empty warning")
+	}
+}
+
+func TestSensitiveManifestTargetWarnings(t *testing.T) {
+	home := t.TempDir()
+
+	tests := []struct {
+		name    string
+		actions []manifest.Action
+		want    bool
+	}{
+		{name: "ssh config", actions: []manifest.Action{{Source: "configs/ssh/config", Target: filepath.Join(home, ".ssh", "config")}}, want: true},
+		{name: "gnupg dir", actions: []manifest.Action{{Source: "configs/gnupg/pubring.kbx", Target: filepath.Join(home, ".gnupg", "pubring.kbx")}}, want: true},
+		{name: "kube dir", actions: []manifest.Action{{Source: "configs/kube/config", Target: filepath.Join(home, ".kube", "config")}}, want: true},
+		{name: "aws dir", actions: []manifest.Action{{Source: "configs/aws/credentials", Target: filepath.Join(home, ".aws", "credentials")}}, want: true},
+		{name: "gh config", actions: []manifest.Action{{Source: "configs/gh/config.yml", Target: filepath.Join(home, ".config", "gh", "config.yml")}}, want: true},
+		{name: "gcloud config", actions: []manifest.Action{{Source: "configs/gcloud/config", Target: filepath.Join(home, ".config", "gcloud", "configurations", "config_default")}}, want: true},
+		{name: "env file", actions: []manifest.Action{{Source: "configs/app/env", Target: filepath.Join(home, "services", "api", ".env")}}, want: true},
+		{name: "normal zshrc", actions: []manifest.Action{{Source: "configs/zshrc", Target: filepath.Join(home, ".zshrc")}}, want: false},
+		{name: "normal nvim config", actions: []manifest.Action{{Source: "configs/nvim/init.lua", Target: filepath.Join(home, ".config", "nvim", "init.lua")}}, want: false},
+	}
+
+	for _, tt := range tests {
+		tt := tt
+		t.Run(tt.name, func(t *testing.T) {
+			warnings := sensitiveManifestTargetWarnings(home, tt.actions)
+			if tt.want && len(warnings) == 0 {
+				t.Fatal("expected warning, got none")
+			}
+			if !tt.want && len(warnings) != 0 {
+				t.Fatalf("expected no warning, got %v", warnings)
+			}
+		})
+	}
+}
+
+func TestSensitiveManifestTargetWarningsDeduplicatesAndSorts(t *testing.T) {
+	home := t.TempDir()
+
+	actions := []manifest.Action{
+		{Source: "z-last", Target: filepath.Join(home, ".aws", "credentials")},
+		{Source: "a-first", Target: filepath.Join(home, ".ssh", "config")},
+		{Source: "a-first", Target: filepath.Join(home, ".ssh", "config")},
+		{Source: "m-middle", Target: filepath.Join(home, ".config", "gcloud", "configurations", "config_default")},
+	}
+
+	warnings := sensitiveManifestTargetWarnings(home, actions)
+	if len(warnings) != 1 {
+		t.Fatalf("warnings = %v, want 1 summary", warnings)
+	}
+
+	want := "sensitive manifest targets: a-first -> " + filepath.Join(home, ".ssh", "config") + ", m-middle -> " + filepath.Join(home, ".config", "gcloud", "configurations", "config_default") + ", z-last -> " + filepath.Join(home, ".aws", "credentials")
+	if warnings[0] != want {
+		t.Fatalf("warning = %q, want %q", warnings[0], want)
 	}
 }
 

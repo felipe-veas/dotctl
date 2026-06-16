@@ -19,7 +19,6 @@ func TestSaveAndLoad(t *testing.T) {
 			URL:  "github.com/user/dotfiles",
 			Path: "/home/user/.config/dotctl/repo",
 		},
-		Profile:  "macstudio",
 		LastSync: &now,
 	}
 
@@ -34,9 +33,6 @@ func TestSaveAndLoad(t *testing.T) {
 
 	if loaded.Repo.URL != cfg.Repo.URL {
 		t.Errorf("Repo.URL = %q, want %q", loaded.Repo.URL, cfg.Repo.URL)
-	}
-	if loaded.Profile != cfg.Profile {
-		t.Errorf("Profile = %q, want %q", loaded.Profile, cfg.Profile)
 	}
 	if loaded.Repo.Path != cfg.Repo.Path {
 		t.Errorf("Repo.Path = %q, want %q", loaded.Repo.Path, cfg.Repo.Path)
@@ -89,8 +85,7 @@ func TestSaveCreatesParentDirs(t *testing.T) {
 	path := filepath.Join(dir, "nested", "deep", "config.yaml")
 
 	cfg := &Config{
-		Repo:    RepoConfig{URL: "github.com/test/repo"},
-		Profile: "test",
+		Repo: RepoConfig{URL: "github.com/test/repo"},
 	}
 
 	if err := Save(path, cfg); err != nil {
@@ -108,8 +103,7 @@ func TestLoadDefaultRepoPath(t *testing.T) {
 
 	// Save a config WITHOUT repo.path set
 	cfg := &Config{
-		Repo:    RepoConfig{URL: "github.com/user/dots"},
-		Profile: "test",
+		Repo: RepoConfig{URL: "github.com/user/dots"},
 	}
 	if err := Save(path, cfg); err != nil {
 		t.Fatalf("Save: %v", err)
@@ -141,7 +135,7 @@ func TestExists(t *testing.T) {
 	}
 }
 
-func TestLoadMigratesLegacyRepoToRepos(t *testing.T) {
+func TestLoadSingleRepoConfig(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "config.yaml")
 
@@ -160,78 +154,86 @@ profile: laptop
 		t.Fatalf("Load: %v", err)
 	}
 
-	if len(cfg.Repos) != 1 {
-		t.Fatalf("Repos len = %d, want 1", len(cfg.Repos))
+	if cfg.Repo.URL != "github.com/user/dotfiles" {
+		t.Fatalf("Repo.URL = %q, want github.com/user/dotfiles", cfg.Repo.URL)
 	}
-	if cfg.ActiveRepo != DefaultRepoName {
-		t.Fatalf("ActiveRepo = %q, want %q", cfg.ActiveRepo, DefaultRepoName)
-	}
-	if cfg.Repos[0].Name != DefaultRepoName {
-		t.Fatalf("Repos[0].Name = %q, want %q", cfg.Repos[0].Name, DefaultRepoName)
+	if cfg.Repo.Path != "/tmp/dotfiles" {
+		t.Fatalf("Repo.Path = %q, want /tmp/dotfiles", cfg.Repo.Path)
 	}
 }
 
-func TestConfigSetActiveRepo(t *testing.T) {
-	cfg := &Config{
-		Repos: []RepoConfig{
-			{Name: "default", URL: "github.com/user/default", Path: "/tmp/default"},
-			{Name: "work", URL: "github.com/user/work", Path: "/tmp/work"},
-		},
-		ActiveRepo: "default",
-		Profile:    "dev",
+func TestLoadMigratesSingleDeprecatedRepoEntry(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.yaml")
+
+	body := []byte(`
+repos:
+  - name: default
+    url: github.com/user/dotfiles
+    path: /tmp/dotfiles
+profile: laptop
+`)
+	if err := os.WriteFile(path, body, 0o644); err != nil {
+		t.Fatalf("write deprecated config: %v", err)
 	}
 
-	if err := cfg.SetActiveRepo("work"); err != nil {
-		t.Fatalf("SetActiveRepo: %v", err)
+	cfg, err := Load(path)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
 	}
-	if cfg.ActiveRepo != "work" {
-		t.Fatalf("ActiveRepo = %q, want work", cfg.ActiveRepo)
-	}
-	if cfg.Repo.Name != "work" {
-		t.Fatalf("Repo.Name = %q, want work", cfg.Repo.Name)
+	if cfg.Repo.URL != "github.com/user/dotfiles" {
+		t.Fatalf("Repo.URL = %q, want github.com/user/dotfiles", cfg.Repo.URL)
 	}
 }
 
-func TestConfigUpsertRepoAndRemove(t *testing.T) {
-	cfg := &Config{
-		Repos: []RepoConfig{
-			{Name: "default", URL: "github.com/user/default", Path: "/tmp/default"},
-		},
-		ActiveRepo: "default",
-		Profile:    "dev",
+func TestLoadSelectsActiveDeprecatedRepo(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.yaml")
+
+	body := []byte(`
+repos:
+  - name: default
+    url: github.com/user/default
+    path: /tmp/default
+  - name: work
+    url: github.com/user/work
+    path: /tmp/work
+active_repo: work
+profile: laptop
+`)
+	if err := os.WriteFile(path, body, 0o644); err != nil {
+		t.Fatalf("write deprecated config: %v", err)
 	}
 
-	updated, err := cfg.UpsertRepo(RepoConfig{
-		Name: "work",
-		URL:  "github.com/user/work",
-		Path: "/tmp/work",
-	})
+	cfg, err := Load(path)
 	if err != nil {
-		t.Fatalf("UpsertRepo add: %v", err)
+		t.Fatalf("Load: %v", err)
 	}
-	if updated {
-		t.Fatal("expected updated=false for new repo")
+	if cfg.Repo.URL != "github.com/user/work" {
+		t.Fatalf("Repo.URL = %q, want github.com/user/work", cfg.Repo.URL)
 	}
-	if len(cfg.Repos) != 2 {
-		t.Fatalf("Repos len = %d, want 2", len(cfg.Repos))
+}
+
+func TestLoadRejectsDeprecatedMultiRepoWithoutActiveSelection(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.yaml")
+
+	body := []byte(`
+repos:
+  - name: default
+    url: github.com/user/default
+    path: /tmp/default
+  - name: work
+    url: github.com/user/work
+    path: /tmp/work
+profile: laptop
+`)
+	if err := os.WriteFile(path, body, 0o644); err != nil {
+		t.Fatalf("write deprecated config: %v", err)
 	}
 
-	updated, err = cfg.UpsertRepo(RepoConfig{
-		Name: "work",
-		URL:  "github.com/user/work-updated",
-		Path: "/tmp/work2",
-	})
-	if err != nil {
-		t.Fatalf("UpsertRepo update: %v", err)
-	}
-	if !updated {
-		t.Fatal("expected updated=true for existing repo")
-	}
-
-	if err := cfg.RemoveRepo("work"); err != nil {
-		t.Fatalf("RemoveRepo: %v", err)
-	}
-	if len(cfg.Repos) != 1 {
-		t.Fatalf("Repos len = %d, want 1", len(cfg.Repos))
+	_, err := Load(path)
+	if err == nil {
+		t.Fatal("expected error for deprecated multi-repo config without active selection")
 	}
 }

@@ -8,19 +8,18 @@ import (
 
 	"github.com/felipe-veas/dotctl/internal/config"
 	"github.com/felipe-veas/dotctl/internal/manifest"
-	"github.com/felipe-veas/dotctl/internal/profile"
 	"github.com/felipe-veas/dotctl/pkg/types"
 )
 
 type manifestState struct {
-	Context  profile.Context
+	Context  manifest.Context
 	Manifest *manifest.Manifest
 	Actions  []manifest.Action
 	Skipped  []manifest.Action
 }
 
 func resolveManifestState(cfg *config.Config) (manifestState, error) {
-	ctx := profile.Resolve(cfg.Profile)
+	ctx := manifest.RuntimeContext()
 
 	manifestPath := filepath.Join(cfg.Repo.Path, "manifest.yaml")
 	m, err := manifest.Load(manifestPath)
@@ -28,7 +27,7 @@ func resolveManifestState(cfg *config.Config) (manifestState, error) {
 		return manifestState{}, fmt.Errorf("loading manifest: %w", err)
 	}
 
-	actions, skipped, err := manifest.Resolve(m, ctx, cfg.Repo.Path)
+	actions, skipped, err := manifest.Resolve(m, ctx)
 	if err != nil {
 		return manifestState{}, fmt.Errorf("resolving manifest: %w", err)
 	}

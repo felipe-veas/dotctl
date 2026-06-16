@@ -1,26 +1,56 @@
 package manifest
 
 import (
+	"os"
 	"path"
 	"path/filepath"
+	"runtime"
 	"strings"
-
-	"github.com/felipe-veas/dotctl/internal/profile"
 )
+
+// Context holds the resolved runtime context used for manifest condition evaluation.
+type Context struct {
+	OS       string
+	Arch     string
+	Hostname string
+	Home     string
+}
+
+// RuntimeContext builds a Context from the current system state.
+func RuntimeContext() Context {
+	hostname, _ := os.Hostname()
+	home, _ := os.UserHomeDir()
+
+	return Context{
+		OS:       runtime.GOOS,
+		Arch:     runtime.GOARCH,
+		Hostname: hostname,
+		Home:     home,
+	}
+}
+
+// Vars returns template variables available in manifest targets.
+func (c Context) Vars() map[string]string {
+	return map[string]string{
+		"home":     c.Home,
+		"os":       c.OS,
+		"arch":     c.Arch,
+		"hostname": c.Hostname,
+	}
+}
 
 // Action represents a resolved file action to execute.
 type Action struct {
 	Source     string // relative path in repo
 	Target     string // absolute resolved target path
 	Mode       string // "symlink" or "copy"
-	Decrypt    bool   // whether source must be decrypted before copy
 	Backup     bool   // whether to backup existing file
 	SkipReason string // non-empty if skipped (for dry-run reporting)
 }
 
 // Resolve filters manifest entries by the current context and resolves targets.
 // It returns a list of actions to apply and a list of skipped entries (for reporting).
-func Resolve(m *Manifest, ctx profile.Context, repoRoot string) (actions []Action, skipped []Action, err error) {
+func Resolve(m *Manifest, ctx Context) (actions []Action, skipped []Action, err error) {
 	vars := MergeVars(m.Vars, ctx.Vars())
 
 	for _, f := range m.Files {
@@ -48,15 +78,6 @@ func Resolve(m *Manifest, ctx profile.Context, repoRoot string) (actions []Actio
 			continue
 		}
 
-		if !f.When.Profile.Matches(ctx.Profile) {
-			skipped = append(skipped, Action{
-				Source:     source,
-				Target:     f.Target,
-				SkipReason: "profile: " + ctx.Profile + " not in " + sliceStr(f.When.Profile),
-			})
-			continue
-		}
-
 		// Resolve target path
 		resolvedTarget, resolveErr := ResolveTarget(f.Target, vars)
 		if resolveErr != nil {
@@ -64,30 +85,14 @@ func Resolve(m *Manifest, ctx profile.Context, repoRoot string) (actions []Actio
 		}
 
 		actions = append(actions, Action{
-			Source:  source,
-			Target:  resolvedTarget,
-			Mode:    f.LinkMode(),
-			Decrypt: f.Decrypt,
-			Backup:  f.ShouldBackup(),
+			Source: source,
+			Target: resolvedTarget,
+			Mode:   f.LinkMode(),
+			Backup: f.ShouldBackup(),
 		})
 	}
 
 	return actions, skipped, nil
-}
-
-// ResolveHooks filters hooks by the current context.
-func ResolveHooks(hooks []Hook, ctx profile.Context) []Hook {
-	var result []Hook
-	for _, h := range hooks {
-		if !h.When.OS.Matches(ctx.OS) {
-			continue
-		}
-		if !h.When.Profile.Matches(ctx.Profile) {
-			continue
-		}
-		result = append(result, h)
-	}
-	return result
 }
 
 func sliceStr(s StringOrSlice) string {

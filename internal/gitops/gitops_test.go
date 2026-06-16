@@ -186,15 +186,15 @@ func TestPush(t *testing.T) {
 	}
 
 	now := time.Date(2026, 2, 12, 10, 30, 0, 0, time.UTC)
-	res, err := Push(client, "", "devserver", now)
+	res, err := Push(client, "", now)
 	if err != nil {
 		t.Fatalf("Push: %v", err)
 	}
 	if !res.Committed || !res.Pushed {
 		t.Fatalf("unexpected push result: %+v", res)
 	}
-	if !strings.Contains(res.Message, "devserver") {
-		t.Fatalf("message = %q, expected profile", res.Message)
+	if !strings.Contains(res.Message, "dotctl push @") {
+		t.Fatalf("message = %q, expected default dotctl push message", res.Message)
 	}
 
 	gitCmd(t, "", "clone", remote, verifier)
@@ -218,7 +218,7 @@ func TestPushUsesLocalGitIdentity(t *testing.T) {
 	}
 
 	now := time.Date(2026, 2, 13, 9, 0, 0, 0, time.UTC)
-	if _, err := Push(client, "custom message", "devserver", now); err != nil {
+	if _, err := Push(client, "custom message", now); err != nil {
 		t.Fatalf("Push: %v", err)
 	}
 
@@ -236,7 +236,7 @@ func TestPushNothingToPush(t *testing.T) {
 	client := filepath.Join(t.TempDir(), "client")
 	gitCmd(t, "", "clone", remote, client)
 
-	res, err := Push(client, "", "devserver", time.Now())
+	res, err := Push(client, "", time.Now())
 	if err != nil {
 		t.Fatalf("Push: %v", err)
 	}

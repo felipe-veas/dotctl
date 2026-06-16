@@ -26,12 +26,7 @@ files:
   - source: configs/wezterm/wezterm.lua
     target: "{{ .config_home }}/wezterm/wezterm.lua"
     when:
-      profile: [macstudio, laptop]
-hooks:
-  post_sync:
-    - command: echo done
-      when:
-        os: darwin
+      os: darwin
 ignore:
   - "*.token"
   - ".env"
@@ -51,19 +46,11 @@ ignore:
 	if len(m.Ignore) != 2 {
 		t.Errorf("Ignore count = %d, want 2", len(m.Ignore))
 	}
-	if len(m.Hooks.PostSync) != 1 {
-		t.Errorf("PostSync hooks = %d, want 1", len(m.Hooks.PostSync))
-	}
-
 	// Check condition on file[2]
 	if len(m.Files[2].When.OS) != 1 || m.Files[2].When.OS[0] != "darwin" {
 		t.Errorf("Files[2].When.OS = %v, want [darwin]", m.Files[2].When.OS)
 	}
 
-	// Check multi-profile condition on file[4]
-	if len(m.Files[4].When.Profile) != 2 {
-		t.Errorf("Files[4].When.Profile = %v, want [macstudio laptop]", m.Files[4].When.Profile)
-	}
 }
 
 func TestParseMissingSource(t *testing.T) {
@@ -161,7 +148,7 @@ files:
 	}
 }
 
-func TestParseDecryptRequiresCopyMode(t *testing.T) {
+func TestParseRejectsDeprecatedDecryptField(t *testing.T) {
 	data := []byte(`
 version: 1
 files:
@@ -173,23 +160,40 @@ files:
 
 	_, err := Parse(data)
 	if err == nil {
-		t.Fatal("expected error for decrypt=true with non-copy mode")
+		t.Fatal("expected error for deprecated decrypt field")
 	}
 }
 
-func TestParseDecryptRequiresEncryptedSourceName(t *testing.T) {
+func TestParseRejectsDeprecatedProfileCondition(t *testing.T) {
 	data := []byte(`
 version: 1
 files:
-  - source: configs/secrets/api.yaml
-    target: ~/.config/secrets/api.yaml
-    mode: copy
-    decrypt: true
+  - source: configs/zsh/.zshrc
+    target: ~/.zshrc
+    when:
+      profile: laptop
 `)
 
 	_, err := Parse(data)
 	if err == nil {
-		t.Fatal("expected error for decrypt=true with non-encrypted source name")
+		t.Fatal("expected error for deprecated profile condition")
+	}
+}
+
+func TestParseRejectsDeprecatedHooks(t *testing.T) {
+	data := []byte(`
+version: 1
+files:
+  - source: configs/zsh/.zshrc
+    target: ~/.zshrc
+hooks:
+  post_sync:
+    - command: echo done
+`)
+
+	_, err := Parse(data)
+	if err == nil {
+		t.Fatal("expected error for deprecated hooks field")
 	}
 }
 
@@ -200,23 +204,53 @@ func TestResolveTarget(t *testing.T) {
 	}
 
 	tests := []struct {
+		name  string
 		input string
 		want  string
 	}{
-		{"~/.zshrc", "/Users/test/.zshrc"},
-		{"{{ .config_home }}/nvim", "/Users/test/.config/nvim"},
-		{"/absolute/path", "/absolute/path"},
+		{name: "home expansion", input: "~/.zshrc", want: "/Users/test/.zshrc"},
+		{name: "template expansion", input: "{{ .config_home }}/nvim", want: "/Users/test/.config/nvim"},
+		{name: "absolute under home", input: "/Users/test/.config/nvim", want: "/Users/test/.config/nvim"},
 	}
 
 	for _, tt := range tests {
-		got, err := ResolveTarget(tt.input, vars)
-		if err != nil {
-			t.Errorf("ResolveTarget(%q): %v", tt.input, err)
-			continue
-		}
-		if got != tt.want {
-			t.Errorf("ResolveTarget(%q) = %q, want %q", tt.input, got, tt.want)
-		}
+		tt := tt
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := ResolveTarget(tt.input, vars)
+			if err != nil {
+				t.Fatalf("ResolveTarget(%q): %v", tt.input, err)
+			}
+			if got != tt.want {
+				t.Fatalf("ResolveTarget(%q) = %q, want %q", tt.input, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestResolveTargetRejectsUnsafePaths(t *testing.T) {
+	tests := []struct {
+		name  string
+		input string
+		vars  map[string]string
+	}{
+		{name: "outside home absolute", input: "/absolute/path", vars: map[string]string{"home": "/Users/test"}},
+		{name: "sibling home path", input: "/Users/test2/.config/nvim", vars: map[string]string{"home": "/Users/test"}},
+		{name: "relative path", input: "relative/path", vars: map[string]string{"home": "/Users/test"}},
+		{name: "home root", input: "~", vars: map[string]string{"home": "/Users/test"}},
+		{name: "parent traversal with home", input: "~/../outside", vars: map[string]string{"home": "/Users/test"}},
+		{name: "parent traversal with template", input: "{{ .home }}/../outside", vars: map[string]string{"home": "/Users/test"}},
+		{name: "missing home", input: "~/.zshrc", vars: map[string]string{}},
+		{name: "empty home", input: "~/.zshrc", vars: map[string]string{"home": "   "}},
+	}
+
+	for _, tt := range tests {
+		tt := tt
+		t.Run(tt.name, func(t *testing.T) {
+			_, err := ResolveTarget(tt.input, tt.vars)
+			if err == nil {
+				t.Fatalf("expected error for %q", tt.input)
+			}
+		})
 	}
 }
 
@@ -235,9 +269,8 @@ func TestMergeVars(t *testing.T) {
 		"custom":      "value",
 	}
 	contextVars := map[string]string{
-		"home":    "/Users/test",
-		"os":      "darwin",
-		"profile": "macstudio",
+		"home": "/Users/test",
+		"os":   "darwin",
 	}
 
 	merged := MergeVars(manifestVars, contextVars)

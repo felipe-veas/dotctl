@@ -59,6 +59,36 @@ func addManagedSources(repoPath string, sources []string) error {
 	return writeManagedSources(repoPath, combined)
 }
 
+func removeManagedSources(repoPath string, sources []string) error {
+	if len(sources) == 0 {
+		return nil
+	}
+
+	current, err := readManagedSources(repoPath)
+	if err != nil {
+		return err
+	}
+
+	toRemove := make(map[string]struct{}, len(sources))
+	for _, source := range sources {
+		normalized, ok := normalizeManagedSource(source)
+		if !ok {
+			return fmt.Errorf("invalid managed source %q", source)
+		}
+		toRemove[normalized] = struct{}{}
+	}
+
+	remaining := make([]string, 0, len(current))
+	for _, source := range current {
+		if _, ok := toRemove[source]; ok {
+			continue
+		}
+		remaining = append(remaining, source)
+	}
+
+	return writeManagedSources(repoPath, remaining)
+}
+
 func readManagedSources(repoPath string) ([]string, error) {
 	statePath := filepath.Join(repoPath, managedSourcesStateFile)
 	data, err := os.ReadFile(statePath)
@@ -254,14 +284,14 @@ func backfillMissingSourcesFromTargets(repoPath string, actions []manifest.Actio
 		})
 	}
 
+	if errorCount > 0 {
+		return results, fmt.Errorf("backfilling missing manifest sources failed with %d error(s)", errorCount)
+	}
+
 	if !dryRun && len(copiedSources) > 0 {
 		if err := addManagedSources(repoPath, copiedSources); err != nil {
 			return results, err
 		}
-	}
-
-	if errorCount > 0 {
-		return results, fmt.Errorf("backfilling missing manifest sources failed with %d error(s)", errorCount)
 	}
 
 	return results, nil
