@@ -2,6 +2,14 @@
 
 <!-- markdownlint-disable MD024 -->
 
+## [1.13.0](https://github.com/felipe-veas/dotctl/compare/v1.12.1...v1.13.0) (2026-06-16)
+
+
+### Features
+
+* add backup snapshot metadata ([16e575b](https://github.com/felipe-veas/dotctl/commit/16e575bf563790c8800647a7f2d6a46162f2e795))
+* add backup snapshot metadata ([3be504e](https://github.com/felipe-veas/dotctl/commit/3be504eb488968cf2579597913f3e319f88aff17))
+
 ## [1.12.1](https://github.com/felipe-veas/dotctl/compare/v1.12.0...v1.12.1) (2026-02-17)
 
 ### Bug Fixes
