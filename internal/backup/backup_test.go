@@ -222,6 +222,122 @@ func TestCreateWritesMetadataForDirectoryAndRestoreUsesMetadata(t *testing.T) {
 	}
 }
 
+func TestRestoreSnapshotTargetsRestoresMetadataBackedDirectoryOnly(t *testing.T) {
+	dir := t.TempDir()
+	home := filepath.Join(dir, "home")
+	configHome := filepath.Join(dir, "config")
+	t.Setenv("HOME", home)
+	t.Setenv("XDG_CONFIG_HOME", configHome)
+
+	targetDir := filepath.Join(home, ".config", "nvim")
+	if err := os.MkdirAll(filepath.Join(targetDir, "sub"), 0o755); err != nil {
+		t.Fatalf("mkdir target dir: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(targetDir, "init.lua"), []byte("print('hello')\n"), 0o644); err != nil {
+		t.Fatalf("write init.lua: %v", err)
+	}
+	otherTarget := filepath.Join(home, ".zshrc")
+	if err := os.WriteFile(otherTarget, []byte("keep\n"), 0o644); err != nil {
+		t.Fatalf("write other target: %v", err)
+	}
+
+	endSession := BeginSession()
+	defer endSession()
+
+	backupPath, err := Create(targetDir)
+	if err != nil {
+		t.Fatalf("Create dir: %v", err)
+	}
+
+	snapshot := snapshotFromBackupPath(t, configHome, backupPath)
+	if err := os.WriteFile(filepath.Join(targetDir, "init.lua"), []byte("changed\n"), 0o644); err != nil {
+		t.Fatalf("mutate init.lua: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(targetDir, "stale.txt"), []byte("stale\n"), 0o644); err != nil {
+		t.Fatalf("write stale file: %v", err)
+	}
+	if err := os.WriteFile(otherTarget, []byte("keep-updated\n"), 0o644); err != nil {
+		t.Fatalf("mutate other target: %v", err)
+	}
+
+	results, err := RestoreSnapshotTargets(snapshot, []string{targetDir}, false)
+	if err != nil {
+		t.Fatalf("RestoreSnapshotTargets: %v", err)
+	}
+	if len(results) != 1 || results[0].Status != "restored" {
+		t.Fatalf("results = %#v", results)
+	}
+
+	data, err := os.ReadFile(filepath.Join(targetDir, "init.lua"))
+	if err != nil {
+		t.Fatalf("read restored init.lua: %v", err)
+	}
+	if string(data) != "print('hello')\n" {
+		t.Fatalf("restored init.lua = %q", string(data))
+	}
+	if _, err := os.Stat(filepath.Join(targetDir, "stale.txt")); !os.IsNotExist(err) {
+		t.Fatalf("stale.txt should be removed, err=%v", err)
+	}
+	data, err = os.ReadFile(otherTarget)
+	if err != nil {
+		t.Fatalf("read other target: %v", err)
+	}
+	if string(data) != "keep-updated\n" {
+		t.Fatalf("other target mutated: %q", string(data))
+	}
+}
+
+func TestRestoreSnapshotTargetsAcceptsRelativePathWithinWorkingDir(t *testing.T) {
+	dir := t.TempDir()
+	home := filepath.Join(dir, "home")
+	configHome := filepath.Join(dir, "config")
+	t.Setenv("HOME", home)
+	t.Setenv("XDG_CONFIG_HOME", configHome)
+
+	if err := os.MkdirAll(home, 0o755); err != nil {
+		t.Fatalf("mkdir home: %v", err)
+	}
+	target := filepath.Join(home, "notes.txt")
+	if err := os.WriteFile(target, []byte("current\n"), 0o644); err != nil {
+		t.Fatalf("write target: %v", err)
+	}
+
+	backupPath := filepath.Join(configHome, "dotctl", "backups", "20260101-010101.000013", "targets", strings.TrimPrefix(target, string(filepath.Separator)))
+	if err := os.MkdirAll(filepath.Dir(backupPath), 0o755); err != nil {
+		t.Fatalf("mkdir backup path: %v", err)
+	}
+	if err := os.WriteFile(backupPath, []byte("backup\n"), 0o644); err != nil {
+		t.Fatalf("write backup: %v", err)
+	}
+
+	oldWD, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("getwd: %v", err)
+	}
+	if err := os.Chdir(home); err != nil {
+		t.Fatalf("chdir home: %v", err)
+	}
+	t.Cleanup(func() {
+		_ = os.Chdir(oldWD)
+	})
+
+	results, err := RestoreSnapshotTargets("20260101-010101.000013", []string{"notes.txt"}, true)
+	if err != nil {
+		t.Fatalf("RestoreSnapshotTargets dry-run: %v", err)
+	}
+	if len(results) != 1 || results[0].Status != "planned" {
+		t.Fatalf("results = %#v", results)
+	}
+
+	data, err := os.ReadFile(target)
+	if err != nil {
+		t.Fatalf("read target: %v", err)
+	}
+	if string(data) != "current\n" {
+		t.Fatalf("target mutated: %q", string(data))
+	}
+}
+
 func TestCreateAppendsMetadataForRepeatedTargets(t *testing.T) {
 	dir := t.TempDir()
 	configHome := filepath.Join(dir, "config")

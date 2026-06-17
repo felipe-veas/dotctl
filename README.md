@@ -287,7 +287,7 @@ Notes:
 | `dotctl edit` | Open the repo with `$VISUAL` or `$EDITOR` |
 | `dotctl edit manifest` | Open `manifest.yaml` with `$VISUAL` or `$EDITOR` |
 | `dotctl backups list` | List local backup snapshots |
-| `dotctl backups restore <snapshot>` | Restore a backup snapshot; requires `--force` unless `--dry-run` |
+| `dotctl backups restore <snapshot>` | Restore a backup snapshot; use repeatable `--target` to restore exact entries, or omit it for a full restore. Requires `--force` unless `--dry-run` |
 | `dotctl open` | Open repo in browser |
 | `dotctl manifest suggest` | Scan common paths and write `manifest.suggested.yaml` |
 
@@ -305,10 +305,12 @@ Always preview restores first:
 ```bash
 dotctl backups list
 dotctl backups restore <snapshot> --dry-run
+dotctl backups restore <snapshot> --target ~/.zshrc --dry-run
+dotctl backups restore <snapshot> --target ~/.zshrc --force
 dotctl backups restore <snapshot> --force
 ```
 
-Restore only applies targets that resolve strictly under your home directory.
+Restore targets must resolve strictly under your home directory. `--target` matches the backed-up target path exactly, and you can repeat it to restore multiple entries. Directory targets restore the directory entry when the snapshot has one.
 
 ## Suggested manifest scan (`dotctl manifest suggest`)
 
