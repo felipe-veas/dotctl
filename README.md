@@ -1,6 +1,14 @@
 # dotctl
 
-`dotctl` is a CLI to sync dotfiles across machines using a private GitHub repository as the source of truth.
+`dotctl` is a CLI for managing dotfiles and other configuration files across machines.
+
+It keeps one personal config set under Git, applies an explicit `manifest.yaml`, and handles sync with backups and rollback.
+
+## Why dotctl?
+
+I wanted a simple way to keep personal dotfiles under control without bringing in a full environment manager.
+Tools like Nix are legitimate and powerful, but they can be more than I needed for this use case.
+`dotctl` is intentionally narrower: predictable dotfile management with Git and a manifest, nothing more.
 
 It is designed for:
 
