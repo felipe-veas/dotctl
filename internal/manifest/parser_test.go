@@ -1,6 +1,7 @@
 package manifest
 
 import (
+	"strings"
 	"testing"
 )
 
@@ -176,6 +177,9 @@ files:
 	if err == nil {
 		t.Fatal("expected error for deprecated decrypt field")
 	}
+	if !strings.Contains(err.Error(), "unsupported field") || !strings.Contains(err.Error(), "decrypt") {
+		t.Fatalf("unexpected error: %v", err)
+	}
 }
 
 func TestParseRejectsDeprecatedProfileCondition(t *testing.T) {
@@ -191,6 +195,9 @@ files:
 	_, err := Parse(data)
 	if err == nil {
 		t.Fatal("expected error for deprecated profile condition")
+	}
+	if !strings.Contains(err.Error(), "unsupported field") || !strings.Contains(err.Error(), "when.profile") {
+		t.Fatalf("unexpected error: %v", err)
 	}
 }
 
@@ -208,6 +215,9 @@ hooks:
 	_, err := Parse(data)
 	if err == nil {
 		t.Fatal("expected error for deprecated hooks field")
+	}
+	if !strings.Contains(err.Error(), "unsupported field") || !strings.Contains(err.Error(), "hooks") {
+		t.Fatalf("unexpected error: %v", err)
 	}
 }
 

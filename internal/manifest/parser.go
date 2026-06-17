@@ -72,13 +72,13 @@ func rejectDeprecatedFields(data []byte) error {
 	}
 
 	if containsMappingKey(&node, "decrypt") {
-		return fmt.Errorf("manifest uses deprecated field %q. dotctl no longer manages secret decryption. Store only non-sensitive dotfiles or decrypt secrets outside dotctl", "decrypt")
+		return fmt.Errorf("manifest uses unsupported field %q. dotctl no longer manages secret decryption; store only non-sensitive dotfiles or decrypt secrets outside dotctl", "decrypt")
 	}
 	if containsMappingKey(&node, "profile") {
-		return fmt.Errorf("manifest uses deprecated field %q. dotctl now manages a single configuration set. Remove profile filters from manifest.yaml", "when.profile")
+		return fmt.Errorf("manifest uses unsupported field %q. dotctl now manages a single configuration set; remove profile filters from manifest.yaml", "when.profile")
 	}
 	if containsMappingKey(&node, "hooks") {
-		return fmt.Errorf("manifest uses deprecated field %q. dotctl no longer executes commands from manifest.yaml. Run setup commands manually outside dotctl", "hooks")
+		return fmt.Errorf("manifest uses unsupported field %q. dotctl no longer executes commands from manifest.yaml; run setup commands manually outside dotctl", "hooks")
 	}
 
 	return nil

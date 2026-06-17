@@ -28,7 +28,7 @@ func runOpen(cmd *cobra.Command, args []string) error {
 
 	url := gitops.BrowserURL(cfg.Repo.URL)
 	if url == "" {
-		return fmt.Errorf("invalid repo URL in config")
+		return fmt.Errorf("invalid repo URL in config: expected a GitHub SSH or HTTPS repo URL")
 	}
 
 	if flagDryRun {

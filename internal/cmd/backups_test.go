@@ -358,6 +358,9 @@ func TestBackupsRestoreTargetRejectsMissingTarget(t *testing.T) {
 	if !strings.Contains(err.Error(), "does not contain target") {
 		t.Fatalf("unexpected error: %v", err)
 	}
+	if !strings.Contains(err.Error(), "dotctl backups list") {
+		t.Fatalf("unexpected error: %v", err)
+	}
 
 	data, err := os.ReadFile(target)
 	if err != nil {

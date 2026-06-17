@@ -73,6 +73,22 @@ func TestValidateOpenURL(t *testing.T) {
 			if !tt.wantErr && err != nil {
 				t.Fatalf("validateOpenURL(%q) = %v, want nil", tt.raw, err)
 			}
+			if err != nil {
+				switch tt.name {
+				case "empty", "whitespace only":
+					if !strings.Contains(err.Error(), "URL must not be empty") {
+						t.Fatalf("validateOpenURL(%q) error = %v, want URL must not be empty", tt.raw, err)
+					}
+				case "unsupported scheme":
+					if !strings.Contains(err.Error(), "unsupported URL scheme") || !strings.Contains(err.Error(), "http or https") {
+						t.Fatalf("validateOpenURL(%q) error = %v, want actionable scheme message", tt.raw, err)
+					}
+				case "missing host":
+					if !strings.Contains(err.Error(), "invalid URL") || !strings.Contains(err.Error(), "host must not be empty") {
+						t.Fatalf("validateOpenURL(%q) error = %v, want host guidance", tt.raw, err)
+					}
+				}
+			}
 		})
 	}
 }

@@ -61,18 +61,18 @@ func OpenURL(rawURL string) error {
 func validateOpenURL(raw string) error {
 	raw = strings.TrimSpace(raw)
 	if raw == "" {
-		return fmt.Errorf("url must not be empty")
+		return fmt.Errorf("URL must not be empty")
 	}
 
 	parsed, err := url.Parse(raw)
 	if err != nil {
-		return fmt.Errorf("invalid url %q: %w", raw, err)
+		return fmt.Errorf("invalid URL %q: %w", raw, err)
 	}
 	if parsed.Scheme != "http" && parsed.Scheme != "https" {
-		return fmt.Errorf("unsupported url scheme %q: only http and https are allowed", parsed.Scheme)
+		return fmt.Errorf("unsupported URL scheme %q: use http or https", parsed.Scheme)
 	}
 	if parsed.Host == "" {
-		return fmt.Errorf("invalid url %q: host must not be empty", raw)
+		return fmt.Errorf("invalid URL %q: host must not be empty", raw)
 	}
 
 	return nil

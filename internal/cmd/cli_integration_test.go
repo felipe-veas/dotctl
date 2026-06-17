@@ -140,6 +140,9 @@ func TestCLIPushBlocksTrackedSensitiveConfigPath(t *testing.T) {
 	if !strings.Contains(err.Error(), "sensitive files detected") {
 		t.Fatalf("push error = %v, want sensitive files detected", err)
 	}
+	if !strings.Contains(err.Error(), "non-sensitive dotfiles") {
+		t.Fatalf("push error = %v, want non-sensitive dotfiles guidance", err)
+	}
 
 	verifier := filepath.Join(t.TempDir(), "verifier")
 	gitCmd(t, "", "clone", env.remotePath, verifier)

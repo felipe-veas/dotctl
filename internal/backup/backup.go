@@ -638,7 +638,7 @@ func selectRestoreEntries(snapshot string, entries []Entry, targets []string, ho
 
 	for _, target := range orderedTargets {
 		if matched[target] == 0 {
-			return nil, fmt.Errorf("snapshot %q does not contain target %q", snapshot, target)
+			return nil, fmt.Errorf("snapshot %q does not contain target %q; run \"dotctl backups list\" or \"dotctl backups restore %q --dry-run\" and match --target exactly", snapshot, target, snapshot)
 		}
 	}
 
