@@ -67,7 +67,7 @@ func runPush(message string) error {
 			for _, w := range warns {
 				out.Warn("%s", w)
 			}
-			return fmt.Errorf("sensitive files detected (remove them from the repo or use --force to override)")
+			return fmt.Errorf("sensitive files detected (dotctl is for non-sensitive dotfiles; remove/untrack them, add an ignore rule, keep secrets encrypted outside dotctl, or rerun with --force after review)")
 		}
 	}
 
@@ -150,7 +150,7 @@ func preflightSecretsCheck(repoPath string) []string {
 	var warns []string
 	for _, f := range files {
 		if isSensitiveTrackedPath(f) {
-			warns = append(warns, fmt.Sprintf("sensitive file tracked: %s (remove it from the repo or add an ignore rule)", f))
+			warns = append(warns, fmt.Sprintf("sensitive file tracked: %s (dotctl is for non-sensitive dotfiles; remove/untrack it, add an ignore rule, keep secrets encrypted outside dotctl, or rerun with --force after review)", f))
 		}
 	}
 	return warns
