@@ -23,6 +23,15 @@ var sensitiveSuffixes = []string{
 	".secrets",
 }
 
+var sensitivePathFamilies = []string{
+	".ssh",
+	".gnupg",
+	".kube",
+	".aws",
+	".config/gh",
+	".config/gcloud",
+}
+
 func trackedSensitiveFiles(repoPath string) ([]string, error) {
 	files, err := gitops.TrackedFiles(repoPath)
 	if err != nil {
@@ -46,8 +55,7 @@ func isSensitiveTrackedPath(p string) bool {
 	lower := strings.ToLower(normalized)
 	base := strings.ToLower(path.Base(lower))
 
-	// Externally encrypted files are acceptable to track.
-	if strings.Contains(base, ".enc.") || strings.HasSuffix(base, ".enc") {
+	if isExternallyEncryptedFile(base) {
 		return false
 	}
 
@@ -63,6 +71,10 @@ func isSensitiveTrackedPath(p string) bool {
 		return true
 	}
 	if base == "id_ed25519" || strings.HasPrefix(base, "id_ed25519.") {
+		return true
+	}
+
+	if hasSensitivePathFamily(lower) {
 		return true
 	}
 
@@ -162,13 +174,21 @@ func isSensitiveManifestTargetRelPath(rel string) bool {
 		return true
 	}
 
-	for _, prefix := range []string{".ssh", ".gnupg", ".kube", ".aws", ".config/gh", ".config/gcloud"} {
-		if lower == prefix || strings.HasPrefix(lower, prefix+"/") {
+	return hasSensitivePathFamily(lower)
+}
+
+func hasSensitivePathFamily(lower string) bool {
+	for _, family := range sensitivePathFamilies {
+		if lower == family || strings.HasPrefix(lower, family+"/") || strings.HasSuffix(lower, "/"+family) || strings.Contains(lower, "/"+family+"/") {
 			return true
 		}
 	}
 
 	return false
+}
+
+func isExternallyEncryptedFile(base string) bool {
+	return strings.Contains(base, ".enc.") || strings.HasSuffix(base, ".enc")
 }
 
 func missingGitignorePatterns(repoPath string, patterns []string) ([]string, error) {
