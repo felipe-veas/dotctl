@@ -2,6 +2,14 @@
 
 <!-- markdownlint-disable MD024 -->
 
+## [1.14.3](https://github.com/felipe-veas/dotctl/compare/v1.14.2...v1.14.3) (2026-06-17)
+
+
+### Bug Fixes
+
+* improve actionable error messages ([65faf72](https://github.com/felipe-veas/dotctl/commit/65faf72025fe4b387e15b77119420185752ba6fb))
+* improve actionable error messages ([a882e52](https://github.com/felipe-veas/dotctl/commit/a882e52848016082ee2df6993780c523ac9c6deb))
+
 ## [1.14.2](https://github.com/felipe-veas/dotctl/compare/v1.14.1...v1.14.2) (2026-06-17)
 
 
