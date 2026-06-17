@@ -2,6 +2,14 @@
 
 <!-- markdownlint-disable MD024 -->
 
+## [1.14.2](https://github.com/felipe-veas/dotctl/compare/v1.14.1...v1.14.2) (2026-06-17)
+
+
+### Bug Fixes
+
+* address Aikido security follow-ups ([a85e2e5](https://github.com/felipe-veas/dotctl/commit/a85e2e5cd2843301fc134b1a51f2387b59721dd1))
+* validate URLs before opening browser ([eca3919](https://github.com/felipe-veas/dotctl/commit/eca391973ec0337c3dc3a02a324628b391cb274f))
+
 ## [1.14.1](https://github.com/felipe-veas/dotctl/compare/v1.14.0...v1.14.1) (2026-06-17)
 
 
