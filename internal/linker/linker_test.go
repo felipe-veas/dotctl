@@ -255,6 +255,29 @@ func TestApplyRejectsSourceTraversal(t *testing.T) {
 	}
 }
 
+func TestApplyRejectsNestedSourceTraversal(t *testing.T) {
+	repoRoot, targetDir := setupRepo(t)
+	targetPath := filepath.Join(targetDir, ".token")
+
+	actions := []manifest.Action{
+		{Source: "configs/../../outside.txt", Target: targetPath, Mode: "copy"},
+	}
+
+	results := Apply(actions, repoRoot, false)
+	if len(results) != 1 {
+		t.Fatalf("results = %d, want 1", len(results))
+	}
+	if results[0].Status != "error" {
+		t.Fatalf("status = %q, want error", results[0].Status)
+	}
+	if results[0].Error == nil || !strings.Contains(results[0].Error.Error(), "within repo root") {
+		t.Fatalf("expected repo-root validation error, got: %v", results[0].Error)
+	}
+	if _, err := os.Lstat(targetPath); !os.IsNotExist(err) {
+		t.Fatalf("target should not be created, err=%v", err)
+	}
+}
+
 func TestApplyCreatesParentDirs(t *testing.T) {
 	repoRoot, targetDir := setupRepo(t)
 
