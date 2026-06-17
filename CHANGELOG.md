@@ -2,6 +2,14 @@
 
 <!-- markdownlint-disable MD024 -->
 
+## [1.14.1](https://github.com/felipe-veas/dotctl/compare/v1.14.0...v1.14.1) (2026-06-17)
+
+
+### Bug Fixes
+
+* detect sensitive tracked config paths ([076c6a9](https://github.com/felipe-veas/dotctl/commit/076c6a9eb20a4f91592545aaae7931e3d09655a5))
+* detect sensitive tracked config paths ([7ee6ef3](https://github.com/felipe-veas/dotctl/commit/7ee6ef3e196bf61665cae2aa934bbf18f0eb8145))
+
 ## [1.14.0](https://github.com/felipe-veas/dotctl/compare/v1.13.0...v1.14.0) (2026-06-17)
 
 
