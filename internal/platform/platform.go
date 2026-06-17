@@ -2,10 +2,12 @@ package platform
 
 import (
 	"fmt"
+	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"strings"
 )
 
 // ConfigDir returns the dotctl config directory, respecting XDG_CONFIG_HOME.
@@ -40,18 +42,55 @@ func BackupDir() string {
 }
 
 // OpenURL opens a URL in the default browser.
-func OpenURL(url string) error {
+func OpenURL(rawURL string) error {
+	openURL := strings.TrimSpace(rawURL)
+	if err := validateOpenURL(openURL); err != nil {
+		return err
+	}
+
 	switch runtime.GOOS {
 	case "darwin":
-		return exec.Command("open", url).Run()
+		return exec.Command("open", openURL).Run()
 	case "linux":
-		return exec.Command("xdg-open", url).Run()
+		return exec.Command("xdg-open", openURL).Run()
 	default:
 		return fmt.Errorf("unsupported OS: %s", runtime.GOOS)
 	}
 }
 
+func validateOpenURL(raw string) error {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return fmt.Errorf("url must not be empty")
+	}
+
+	parsed, err := url.Parse(raw)
+	if err != nil {
+		return fmt.Errorf("invalid url %q: %w", raw, err)
+	}
+	if parsed.Scheme != "http" && parsed.Scheme != "https" {
+		return fmt.Errorf("unsupported url scheme %q: only http and https are allowed", parsed.Scheme)
+	}
+	if parsed.Host == "" {
+		return fmt.Errorf("invalid url %q: host must not be empty", raw)
+	}
+
+	return nil
+}
+
 // OpenFileManager opens a path in the system file manager.
 func OpenFileManager(path string) error {
-	return OpenURL(path)
+	path = strings.TrimSpace(path)
+	if path == "" {
+		return fmt.Errorf("path must not be empty")
+	}
+
+	switch runtime.GOOS {
+	case "darwin":
+		return exec.Command("open", path).Run()
+	case "linux":
+		return exec.Command("xdg-open", path).Run()
+	default:
+		return fmt.Errorf("unsupported OS: %s", runtime.GOOS)
+	}
 }
