@@ -338,6 +338,164 @@ func TestRestoreSnapshotTargetsAcceptsRelativePathWithinWorkingDir(t *testing.T)
 	}
 }
 
+func TestRestoreSnapshotTargetsRejectsRelativePathOutsideHome(t *testing.T) {
+	dir := t.TempDir()
+	home := filepath.Join(dir, "home")
+	configHome := filepath.Join(dir, "config")
+	workDir := filepath.Join(dir, "work")
+	snapshot := "20260101-010101.000014"
+
+	t.Setenv("HOME", home)
+	t.Setenv("XDG_CONFIG_HOME", configHome)
+
+	if err := os.MkdirAll(home, 0o755); err != nil {
+		t.Fatalf("mkdir home: %v", err)
+	}
+	if err := os.MkdirAll(workDir, 0o755); err != nil {
+		t.Fatalf("mkdir work dir: %v", err)
+	}
+
+	outsideTarget := filepath.Join(dir, "evil.txt")
+	if err := os.WriteFile(outsideTarget, []byte("keep\n"), 0o644); err != nil {
+		t.Fatalf("write outside target: %v", err)
+	}
+
+	backupRoot := filepath.Join(configHome, "dotctl", "backups", snapshot, "targets")
+	backupPath := filepath.Join(backupRoot, strings.TrimPrefix(outsideTarget, string(filepath.Separator)))
+	if err := os.MkdirAll(filepath.Dir(backupPath), 0o755); err != nil {
+		t.Fatalf("mkdir backup path: %v", err)
+	}
+	if err := os.WriteFile(backupPath, []byte("backup\n"), 0o644); err != nil {
+		t.Fatalf("write backup: %v", err)
+	}
+	metadata := snapshotMetadata{
+		Version:   snapshotMetadataVersion,
+		CreatedAt: time.Now().UTC(),
+		Entries: []snapshotMetadataEntry{{
+			Target:     outsideTarget,
+			BackupPath: backupPath,
+			Kind:       "file",
+			Mode:       "-rw-r--r--",
+		}},
+	}
+	data, err := json.MarshalIndent(metadata, "", "  ")
+	if err != nil {
+		t.Fatalf("marshal metadata: %v", err)
+	}
+	if err := os.WriteFile(metadataFilePath(snapshot), append(data, '\n'), 0o600); err != nil {
+		t.Fatalf("write metadata: %v", err)
+	}
+
+	oldWD, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("getwd: %v", err)
+	}
+	if err := os.Chdir(home); err != nil {
+		t.Fatalf("chdir home: %v", err)
+	}
+	t.Cleanup(func() {
+		_ = os.Chdir(oldWD)
+	})
+
+	results, err := RestoreSnapshotTargets(snapshot, []string{"../evil.txt"}, false)
+	if err == nil {
+		t.Fatalf("expected restore error, got results=%#v", results)
+	}
+	if len(results) != 0 {
+		t.Fatalf("results = %#v", results)
+	}
+	if !strings.Contains(err.Error(), "restore target") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	data, err = os.ReadFile(outsideTarget)
+	if err != nil {
+		t.Fatalf("read outside target: %v", err)
+	}
+	if string(data) != "keep\n" {
+		t.Fatalf("outside target mutated: %q", string(data))
+	}
+}
+
+func TestRestoreSnapshotRejectsMalformedSnapshotNames(t *testing.T) {
+	t.Setenv("HOME", filepath.Join(t.TempDir(), "home"))
+	t.Setenv("XDG_CONFIG_HOME", filepath.Join(t.TempDir(), "config"))
+
+	for _, snapshot := range []string{"../evil", "snap/child"} {
+		results, err := RestoreSnapshot(snapshot, true)
+		if err == nil {
+			t.Fatalf("expected restore error for %q, got results=%#v", snapshot, results)
+		}
+		if !strings.Contains(err.Error(), "snapshot name") {
+			t.Fatalf("unexpected error for %q: %v", snapshot, err)
+		}
+	}
+}
+
+func TestRestoreSnapshotRejectsMetadataTargetOutsideHome(t *testing.T) {
+	dir := t.TempDir()
+	home := filepath.Join(dir, "home")
+	configHome := filepath.Join(dir, "config")
+	snapshot := "20260101-010101.000015"
+
+	t.Setenv("HOME", home)
+	t.Setenv("XDG_CONFIG_HOME", configHome)
+
+	if err := os.MkdirAll(home, 0o755); err != nil {
+		t.Fatalf("mkdir home: %v", err)
+	}
+
+	outTarget := filepath.Join(dir, "outside", "evil.txt")
+	if err := os.MkdirAll(filepath.Dir(outTarget), 0o755); err != nil {
+		t.Fatalf("mkdir outside target dir: %v", err)
+	}
+	if err := os.WriteFile(outTarget, []byte("keep\n"), 0o644); err != nil {
+		t.Fatalf("write outside target: %v", err)
+	}
+
+	backupRoot := filepath.Join(configHome, "dotctl", "backups", snapshot, "targets")
+	backupPath := filepath.Join(backupRoot, strings.TrimPrefix(outTarget, string(filepath.Separator)))
+	if err := os.MkdirAll(filepath.Dir(backupPath), 0o755); err != nil {
+		t.Fatalf("mkdir backup path: %v", err)
+	}
+	if err := os.WriteFile(backupPath, []byte("backup\n"), 0o644); err != nil {
+		t.Fatalf("write backup: %v", err)
+	}
+	metadata := snapshotMetadata{
+		Version:   snapshotMetadataVersion,
+		CreatedAt: time.Now().UTC(),
+		Entries: []snapshotMetadataEntry{{
+			Target:     outTarget,
+			BackupPath: backupPath,
+			Kind:       "file",
+			Mode:       "-rw-r--r--",
+		}},
+	}
+	data, err := json.MarshalIndent(metadata, "", "  ")
+	if err != nil {
+		t.Fatalf("marshal metadata: %v", err)
+	}
+	if err := os.WriteFile(metadataFilePath(snapshot), append(data, '\n'), 0o600); err != nil {
+		t.Fatalf("write metadata: %v", err)
+	}
+
+	results, err := RestoreSnapshot(snapshot, false)
+	if err == nil {
+		t.Fatalf("expected restore error, got results=%#v", results)
+	}
+	if len(results) != 1 || results[0].Status != "rejected" {
+		t.Fatalf("results = %#v", results)
+	}
+
+	data, err = os.ReadFile(outTarget)
+	if err != nil {
+		t.Fatalf("read outside target: %v", err)
+	}
+	if string(data) != "keep\n" {
+		t.Fatalf("outside target mutated: %q", string(data))
+	}
+}
+
 func TestCreateAppendsMetadataForRepeatedTargets(t *testing.T) {
 	dir := t.TempDir()
 	configHome := filepath.Join(dir, "config")

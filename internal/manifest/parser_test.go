@@ -93,6 +93,20 @@ files:
 	}
 }
 
+func TestParseRejectsNestedSourceTraversal(t *testing.T) {
+	data := []byte(`
+version: 1
+files:
+  - source: configs/../../secret
+    target: ~/.token
+`)
+
+	_, err := Parse(data)
+	if err == nil {
+		t.Fatal("expected error for nested source path traversal")
+	}
+}
+
 func TestParseRejectsWindowsAbsoluteSource(t *testing.T) {
 	data := []byte(`
 version: 1
