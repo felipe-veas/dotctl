@@ -49,6 +49,46 @@ func TestBackupDir(t *testing.T) {
 	}
 }
 
+func TestValidateOpenURL(t *testing.T) {
+	tests := []struct {
+		name    string
+		raw     string
+		wantErr bool
+	}{
+		{name: "valid http", raw: "http://example.com", wantErr: false},
+		{name: "valid https", raw: "https://example.com/path?q=1", wantErr: false},
+		{name: "empty", raw: "", wantErr: true},
+		{name: "whitespace only", raw: "   ", wantErr: true},
+		{name: "relative path", raw: "/tmp/file", wantErr: true},
+		{name: "unsupported scheme", raw: "ftp://example.com", wantErr: true},
+		{name: "missing host", raw: "https://", wantErr: true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := validateOpenURL(tt.raw)
+			if tt.wantErr && err == nil {
+				t.Fatalf("validateOpenURL(%q) = nil, want error", tt.raw)
+			}
+			if !tt.wantErr && err != nil {
+				t.Fatalf("validateOpenURL(%q) = %v, want nil", tt.raw, err)
+			}
+		})
+	}
+}
+
+func TestOpenURLRejectsInvalidURL(t *testing.T) {
+	if err := OpenURL("ftp://example.com"); err == nil {
+		t.Fatal("OpenURL should reject unsupported schemes")
+	}
+}
+
+func TestOpenFileManagerRejectsEmptyPath(t *testing.T) {
+	if err := OpenFileManager("   "); err == nil {
+		t.Fatal("OpenFileManager should reject empty paths")
+	}
+}
+
 func TestStateDirDefault(t *testing.T) {
 	// Ensure XDG vars are unset for default behavior
 	t.Setenv("XDG_STATE_HOME", "")
