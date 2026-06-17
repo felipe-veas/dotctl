@@ -1,20 +1,18 @@
 # Roadmap
 
-This file tracks forward-looking product priorities. Historical implementation planning is archived under [docs/archive](./archive/README.md).
+This file tracks current product priorities for `dotctl`.
 
 ## Active direction
 
-`dotctl` is being refocused as a small CLI-only dotfile manager for one private Git repository and one configuration set.
+`dotctl` is a CLI-only dotfile manager for one private Git repository and one configuration set.
 
-- Decision record: [ADR 0001: Refocus dotctl as a Simple Dotfile Manager](./adr/0001-refocus-dotctl-as-simple-dotfile-manager.md)
-- Implementation plan: [Simplification Roadmap](./simplification-roadmap.md)
+The current focus is to keep the command surface small, keep sync explicit, and tighten docs around the supported manifest and backup flow.
 
 ## Near-term
 
 - Keep sync explicit, CLI-only, and easy to reason about.
-- Stabilize the simplified command set and documentation.
-- Backup snapshots now record restore metadata for exact logical entries.
-- Backup restore now supports exact-target selection via repeatable `--target`.
+- Stabilize the supported command set and documentation.
+- Keep backups and restore behavior clear and predictable.
 
 ## Medium-term
 
@@ -23,5 +21,4 @@ This file tracks forward-looking product priorities. Historical implementation p
 ## Long-term
 
 - Keep the CLI small and focused.
-- Consider removed capabilities only as separate projects or external integrations.
 - Maintain clear documentation around what `dotctl` is and is not.
