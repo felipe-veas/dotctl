@@ -47,7 +47,7 @@ Common causes:
 - missing `target`
 - unsupported `mode`
 - duplicate `target` entries
-- removed fields from older manifests such as `decrypt`
+- unsupported fields
 
 ## Restore from backup
 

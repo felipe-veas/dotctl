@@ -59,5 +59,3 @@
 ## Concurrency control
 
 - Sync uses a lock file to prevent parallel apply/push flows.
-
-Historical notes for the removed secrets implementation are archived under [docs/archive](./archive/README.md).
