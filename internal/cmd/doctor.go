@@ -7,7 +7,7 @@ import (
 	"github.com/felipe-veas/dotctl/internal/auth"
 	"github.com/felipe-veas/dotctl/internal/gitops"
 	"github.com/felipe-veas/dotctl/internal/output"
-	"github.com/felipe-veas/dotctl/pkg/types"
+	"github.com/felipe-veas/dotctl/internal/types"
 	"github.com/spf13/cobra"
 )
 

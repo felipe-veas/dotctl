@@ -8,7 +8,7 @@ import (
 
 	"github.com/felipe-veas/dotctl/internal/config"
 	"github.com/felipe-veas/dotctl/internal/manifest"
-	"github.com/felipe-veas/dotctl/pkg/types"
+	"github.com/felipe-veas/dotctl/internal/types"
 )
 
 type manifestState struct {
