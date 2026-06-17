@@ -2,6 +2,14 @@
 
 <!-- markdownlint-disable MD024 -->
 
+## [1.14.0](https://github.com/felipe-veas/dotctl/compare/v1.13.0...v1.14.0) (2026-06-17)
+
+
+### Features
+
+* support targeted backup restore ([cadbfd7](https://github.com/felipe-veas/dotctl/commit/cadbfd75b5c9567bfed794fa34e882eb35ff64d1))
+* support targeted backup restore ([0b73f81](https://github.com/felipe-veas/dotctl/commit/0b73f812f13e221b4cf982cd2469f8ce8b1e6252))
+
 ## [1.13.0](https://github.com/felipe-veas/dotctl/compare/v1.12.1...v1.13.0) (2026-06-16)
 
 
