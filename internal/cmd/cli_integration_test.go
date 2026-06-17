@@ -117,6 +117,74 @@ func TestCLIPushIntegration(t *testing.T) {
 	}
 }
 
+func TestCLIPushBlocksTrackedSensitiveConfigPath(t *testing.T) {
+	requireGit(t)
+	env := setupCLIIntegration(t, false)
+	initForIntegration(t, env)
+
+	sensitiveRelPath := filepath.Join(".aws", "credentials")
+	sensitiveAbsPath := filepath.Join(env.clonePath, ".aws", "credentials")
+	if err := os.MkdirAll(filepath.Dir(sensitiveAbsPath), 0o755); err != nil {
+		t.Fatalf("mkdir sensitive dir: %v", err)
+	}
+	if err := os.WriteFile(sensitiveAbsPath, []byte("[default]\naws_access_key_id = AKIAEXAMPLE\n"), 0o600); err != nil {
+		t.Fatalf("write sensitive file: %v", err)
+	}
+	gitCmd(t, env.clonePath, "add", "-f", sensitiveRelPath)
+	gitCmd(t, env.clonePath, "-c", "user.name=integration-user", "-c", "user.email=integration-user@example.com", "commit", "-m", "add sensitive aws credentials")
+
+	_, err := executeCLI(t, "push", "--config", env.configPath)
+	if err == nil {
+		t.Fatal("expected push to fail for tracked sensitive file")
+	}
+	if !strings.Contains(err.Error(), "sensitive files detected") {
+		t.Fatalf("push error = %v, want sensitive files detected", err)
+	}
+
+	verifier := filepath.Join(t.TempDir(), "verifier")
+	gitCmd(t, "", "clone", env.remotePath, verifier)
+	if _, statErr := os.Stat(filepath.Join(verifier, ".aws", "credentials")); !os.IsNotExist(statErr) {
+		t.Fatalf("remote unexpectedly contains sensitive file, stat err=%v", statErr)
+	}
+}
+
+func TestCLIPushForceAllowsTrackedSensitiveConfigPath(t *testing.T) {
+	requireGit(t)
+	env := setupCLIIntegration(t, false)
+	initForIntegration(t, env)
+
+	sensitiveRelPath := filepath.Join(".kube", "config")
+	sensitiveAbsPath := filepath.Join(env.clonePath, ".kube", "config")
+	if err := os.MkdirAll(filepath.Dir(sensitiveAbsPath), 0o755); err != nil {
+		t.Fatalf("mkdir sensitive dir: %v", err)
+	}
+	if err := os.WriteFile(sensitiveAbsPath, []byte("apiVersion: v1\nclusters: []\n"), 0o600); err != nil {
+		t.Fatalf("write sensitive file: %v", err)
+	}
+	gitCmd(t, env.clonePath, "add", "-f", sensitiveRelPath)
+	gitCmd(t, env.clonePath, "-c", "user.name=integration-user", "-c", "user.email=integration-user@example.com", "commit", "-m", "add kube config")
+
+	_, err := executeCLI(t, "push", "--force", "--config", env.configPath, "--message", "force push sensitive config")
+	if err != nil {
+		t.Fatalf("force push failed: %v", err)
+	}
+
+	verifier := filepath.Join(t.TempDir(), "verifier")
+	gitCmd(t, "", "clone", env.remotePath, verifier)
+	data, err := os.ReadFile(filepath.Join(verifier, ".kube", "config"))
+	if err != nil {
+		t.Fatalf("read pushed sensitive file: %v", err)
+	}
+	if string(data) != "apiVersion: v1\nclusters: []\n" {
+		t.Fatalf("remote sensitive file content mismatch: %q", string(data))
+	}
+
+	subject := gitCmd(t, verifier, "log", "-1", "--pretty=%s")
+	if subject != "force push sensitive config" {
+		t.Fatalf("commit subject = %q, want force push sensitive config", subject)
+	}
+}
+
 func TestCLISyncIntegration(t *testing.T) {
 	requireGit(t)
 	env := setupCLIIntegration(t, false)
