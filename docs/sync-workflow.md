@@ -1,4 +1,4 @@
-# Sync Lifecycle
+# Sync Workflow
 
 ## What `dotctl sync` does
 
